@@ -60,6 +60,6 @@ export const config = {
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
-    },
+    } as mediasoup.types.WebRtcTransportOptions, // Fix type
   },
 };

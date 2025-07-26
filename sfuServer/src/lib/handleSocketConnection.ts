@@ -4,6 +4,11 @@ import { User } from "./types";
 
 export const streamRoom : Record<string, any>= {};
 
+export function send(ws:WebSocket, event: string, payload:any) {
+  const message = JSON.stringify({ event, payload });
+  ws.send(message);
+}
+
 export const handleSocketConnection = async (
   socket: WebSocket,
   userId: string

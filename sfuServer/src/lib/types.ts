@@ -8,3 +8,8 @@ export type User = {
 export type Room = {
   users: User[];
 };
+
+export type WebSocketMessageType = {
+  event: string;
+  payload: any;
+};
