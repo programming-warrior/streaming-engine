@@ -8,7 +8,8 @@ const luaScriptDir= path.resolve(
   __dirname,
   "../scripts"
 );
-const checkAndUpdateWaitingUserScript = fs.readFileSync(luaScriptDir+"./checkandupdate-waiting-user.lua", "utf8");
+const checkAndUpdateWaitingUserScript = fs.readFileSync(luaScriptDir+"/checkandupdate-waiting-user.lua", "utf8");
+console.log("Lua script loaded for checking and updating waiting users");
 
 export class RedisSingleton {
   private static instance: Redis | null = null;
@@ -21,6 +22,11 @@ export class RedisSingleton {
         host: process.env.REDIS_HOST || "localhost",
         port: parseInt(process.env.REDIS_PORT || "6379", 10),
         password: process.env.REDIS_PASSWORD || undefined,
+      });
+
+      RedisSingleton.instance.on('error', (err) => {
+        console.error('Redis Connection Error:', err);
+      
       });
     }
     return RedisSingleton.instance;

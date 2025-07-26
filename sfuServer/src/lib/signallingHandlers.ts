@@ -23,7 +23,7 @@ export async function handleCreateWebRtcTransport(socket: any) {
       }
     });
 
-    socketTransportsMap.set(socket, transport);
+    socketTransportsMap.set(socket, { transport });
 
     send(socket, "webRtcTransportCreated", {
       id: transport.id,
@@ -46,18 +46,40 @@ export async function handleConnectWebRtcTransport(socket: any, payload: any) {
     return;
   }
 
-  const transport = socketTransportsMap.get(socket);
-  if (!transport || transport.id !== transportId) {
+  const peer = socketTransportsMap.get(socket);
+  if (!peer || !peer.transport || peer.transport.id !== transportId) {
     console.error("Transport not found");
     send(socket, "error", { error: "Transport not found" });
     return;
   }
 
   try {
-    await transport.connect({ dtlsParameters });
+    await peer.transport.connect({ dtlsParameters });
     send(socket, "webRtcTransportConnected", {});
   } catch (error) {
     console.error("Failed to connect WebRTC transport:", error);
     send(socket, "error", { error: "Failed to connect transport" });
   }
+}
+
+
+export async function handleProduce(socket: any, payload: any) {
+  const { kind, rtpParameters, transportId } = payload;
+
+  if (!kind || !rtpParameters || !transportId) {
+    console.error("Invalid parameters for producing");
+    send(socket, "error", { error: "Invalid parameters" });
+    return;
+  }
+
+  const peer = socketTransportsMap.get(socket);
+  if (!peer || !peer.transport || peer.transport.id !== transportId) {
+    console.error("Transport not found for producing");
+    send(socket, "error", { error: "Transport not found" });
+    return;
+  }
+  const producer = await peer.transport.produce({ kind, rtpParameters });
+  peer.producer = producer;
+
+  send(socket, "produceSuccess", { id: producer.id });
 }
