@@ -1,0 +1,6 @@
+node_modules
+sfuServer/dist
+sfuServer/node_modules
+sfuServer/node_modules/*
+sfuServer/.env
+.env
