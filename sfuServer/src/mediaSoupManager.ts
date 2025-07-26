@@ -5,6 +5,9 @@ let worker: mediasoup.types.Worker | null = null;
 let router: mediasoup.types.Router | null = null;
 
 
+
+export const socketTransportsMap = new Map<WebSocket, mediasoup.types.WebRtcTransport>();
+
 export const createMedisoup = async () => {
   if (worker) {
     return worker;

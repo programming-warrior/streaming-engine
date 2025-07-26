@@ -10,10 +10,12 @@ import { WebSocketMessageType } from "./lib/types";
 import "./lib/roomManager";
 import { randomUUID } from "crypto";
 import { RedisSingleton } from "./lib/redisConnection";
+import * as mediasoup from "mediasoup";
 import { handleGetRouterRtpCapabilities, handleConnectWebRtcTransport, handleCreateWebRtcTransport } from "./lib/signallingHandlers";
 
 
 const socketConnections = new Map<string, any>();
+
 
 const init = async () => {
   await RedisSingleton.getInstance();
@@ -45,11 +47,11 @@ const init = async () => {
 
       switch (event) {
         case "getRouterRtpCapabilities":
-          handleGetRouterRtpCapabilities(socket, payload);
+          handleGetRouterRtpCapabilities(socket);
           break;
 
         case "createWebRtcTransport":
-          await handleCreateWebRtcTransport(socket, payload);
+          await handleCreateWebRtcTransport(socket);
           break;
 
         case "connectWebRtcTransport":
