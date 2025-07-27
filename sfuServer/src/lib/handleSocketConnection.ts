@@ -1,37 +1,67 @@
 import { WebSocket } from "ws";
-import { RedisSingleton } from "./redisConnection";
-import { User } from "./types";
+import { User, WebSocketWithUserId } from "./types";
+import { randomUUID } from "crypto";
+import {
+  handleGetRouterRtpCapabilities,
+  handleConnectWebRtcTransport,
+  handleCreateWebRtcTransport,
+  handleProduce,
+  handleConsume
+} from "./signallingHandlers";
+import { WebSocketMessageType } from "./types";
+import { peers } from "./global";
 
-export const streamRoom : Record<string, any>= {};
-
-export function send(ws:WebSocket, event: string, payload:any) {
+export function send(ws: WebSocket, event: string, payload: any) {
   const message = JSON.stringify({ event, payload });
   ws.send(message);
 }
 
-export const handleSocketConnection = async (
-  socket: WebSocket,
-  userId: string
-) => {
+export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
+  const userId = randomUUID();
   console.log(`New WebSocket connection from user ${userId}`);
+  socket.userId = userId;
+  peers.set(userId, { socket, transport: null, producer: null });
 
-  const matchedUserId = await RedisSingleton.tryAndMatchUser(userId);
-  if (matchedUserId) {
-    const roomId = `room-${userId}-${matchedUserId}`;
-    streamRoom[roomId] = {
-        users: [userId, matchedUserId],
-        offerer: userId,
-        answerer: matchedUserId, 
-        streamUrl: ""
-    };
-    console.log(`User ${userId} matched with user ${matchedUserId}`);
-    socket.send(JSON.stringify({ type: "match-found", yourId: userId, roomId, offerer: userId, answerer: matchedUserId }));
-  } else {
-    socket.send(JSON.stringify({ type: "waiting-for-user" , yourId: userId }));
-  }
+  socket.on("close", () => {
+    peers.delete(userId);
+    console.log(`Socket connection closed for user: ${userId}`);
+  });
 
-  socket.on("message", (message) => {
-    console.log(`Received message from ${userId}: ${message}`);
+  socket.on("message", async (message: WebSocketMessageType) => {
+    const jsonMessage = JSON.parse(message.toString());
+    const { event, payload } = jsonMessage;
+
+    console.log(`Received action: ${event}`);
+
+    switch (event) {
+      case "getRouterRtpCapabilities":
+        handleGetRouterRtpCapabilities(socket);
+        break;
+
+      case "createWebRtcTransport":
+        await handleCreateWebRtcTransport(socket);
+        break;
+
+      case "connectWebRtcTransport":
+        await handleConnectWebRtcTransport(socket, payload);
+        break;
+
+      case "produce":
+        await handleProduce(socket, payload);
+        break;
+
+      case "consume": 
+       
+        await handleConsume(socket, payload);
+        break;
+
+      default:
+        console.warn(`Unknown action: ${event}`);
+    }
+  });
+
+  socket.on("error", (error) => {
+    console.error(`Socket error for user ${userId}:`, error);
   });
 
   socket.on("close", () => {

@@ -1,8 +1,10 @@
 import { WebSocket } from "ws";
 
+export type WebSocketWithUserId = WebSocket & { userId?: string };
+
 export type User = {
   id: string;
-  socket: WebSocket;
+  socket: WebSocketWithUserId;
 };
 
 export type Room = {
