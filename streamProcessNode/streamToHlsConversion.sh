@@ -64,6 +64,8 @@
  # Cleanup
 # rm -rf  "$OUTPUT_PATH"
 
+ls 
+
 
 ffmpeg \
 -protocol_whitelist file,udp,rtp \
@@ -71,16 +73,15 @@ ffmpeg \
 -filter_complex \
   "[0:v:0]scale=1280:720[v0]; \
    [0:v:1]scale=1280:720[v1]; \
-   [v0][v1]hstack=inputs=2[vout]; \
-   [0:a:0][0:a:1]amix=inputs=2[aout]" \
--map "[vout]" -map "[aout]" \
+   [v0][v1]hstack=inputs=2[vout]" \
+-map "[vout]" \
 -c:v libx264 -preset veryfast -crf 23 -sc_threshold 0 \
--c:a aac -b:a 128k \
 -f hls \
 -hls_time 4 \
 -hls_list_size 5 \
 -hls_flags delete_segments \
 -master_pl_name master.m3u8 \
 -hls_segment_filename "stream_%v/data%02d.ts" \
--var_stream_map "v:0,a:0" "stream_%v.m3u8"
+-var_stream_map "v:0" "stream_%v.m3u8"
+
 
