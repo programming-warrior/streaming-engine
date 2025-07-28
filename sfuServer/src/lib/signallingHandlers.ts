@@ -4,7 +4,7 @@ import { config } from "../config/mediasoupConfig";
 import { peers, streamRoom } from "./global";
 import { WebSocketWithUserId } from "./types";
 import { RedisSingleton } from "./redisConnection";
-import { sendStream } from "./streamProcess";
+import { sendStream } from "./stream";
 
 export function handleGetRouterRtpCapabilities(socket: WebSocketWithUserId) {
   if (!router) return;
@@ -222,7 +222,7 @@ export async function handleConsume(
       paused: true, // Start paused, client will resume
     });
 
-    // consumerPeer.consumers.set(consumer.id, consumer);
+    consumerPeer.consumer = consumer;
 
     consumer.on("transportclose", () => {
       console.log(`Consumer's transport closed ${consumer.id}`);

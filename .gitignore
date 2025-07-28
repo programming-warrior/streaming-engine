@@ -10,3 +10,5 @@ client/.env
 streamProcessNode/node_modules
 streamProcessNode/.env
 streamProcessNode/src/tmp
+streamProcessNode/tmp
+streamProcessNode/dist

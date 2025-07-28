@@ -10,5 +10,6 @@ export const peers = new Map<
     sendTransport: mediasoup.types.Transport | null;
     receiveTransport: mediasoup.types.Transport | null;
     producer: mediasoup.types.Producer | null;
+    consumer?: mediasoup.types.Consumer;
   }
 >();

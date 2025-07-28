@@ -2,8 +2,12 @@
   "dependencies": {
     "express": "^5.1.0"
   },
+  "scripts": {
+    "build": "npx tsc -b && ncp src/Dockerfile dist/Dockerfile"
+  },
   "devDependencies": {
     "@types/express": "^5.0.3",
+    "ncp": "^2.0.0",
     "typescript": "^5.8.3"
   }
 }
