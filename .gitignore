@@ -7,3 +7,6 @@ sfuServer/.env
 client/node_modules
 client/dist
 client/.env
+streamProcessNode/node_modules
+streamProcessNode/.env
+streamProcessNode/src/tmp

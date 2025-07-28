@@ -1,5 +1,6 @@
 import { RedisSingleton } from "./redisConnection";
 import { peers } from "./global";
+import axios from "axios";
 import { router } from "../mediaSoupManager";
 
 export async function sendStream(roomId: string) {
@@ -24,30 +25,72 @@ export async function sendStream(roomId: string) {
     console.error("Router not initialized");
     return;
   }
-  const plainTransport = await router?.createPlainTransport({
+
+  // 1. Create a transport specifically for the first producer
+  const plainTransport1 = await router.createPlainTransport({
     listenIp: "127.0.0.1",
     rtcpMux: false,
     comedia: true,
   });
-  if (!plainTransport) {
-    console.error("Failed to create plain transport");
-    return;
-  }
 
-  const consumer1 = await plainTransport.consume({
+  // 2. Consume the first producer onto this transport
+  const consumer1 = await plainTransport1.consume({
     producerId: producer1.id,
-    rtpCapabilities: router.rtpCapabilities, // or the producer's capabilities
+    rtpCapabilities: router.rtpCapabilities,
     paused: false,
   });
 
-  const consumer2 = await plainTransport.consume({
+  // 3. NOW get the unique port for this stream from its transport
+  const videoPort1 = plainTransport1.tuple.localPort;
+  const videoCodec1 = consumer1.rtpParameters.codecs[0].mimeType.split("/")[1];
+
+  const listenIp = plainTransport1.tuple.localIp;
+
+  // --- Repeat the process for the second producer ---
+
+  // 4. Create a SECOND transport specifically for the second producer
+  const plainTransport2 = await router.createPlainTransport({
+    listenIp: "127.0.0.1",
+    rtcpMux: false,
+    comedia: true,
+  });
+
+  // 5. Consume the second producer onto the second transport
+  const consumer2 = await plainTransport2.consume({
     producerId: producer2.id,
     rtpCapabilities: router.rtpCapabilities,
     paused: false,
   });
 
-  plainTransport.on("trace", (trace) => {
+  // 6. Get the unique port for the second stream
+  const videoPort2 = plainTransport2.tuple.localPort;
+  const videoCodec2 = consumer2.rtpParameters.codecs[0].mimeType.split("/")[1];
+
+  plainTransport1.on("trace", (trace) => {
     // RTP/RTCP packet info
     console.log("Trace:", trace);
   });
+
+  plainTransport2.on("trace", (trace) => {
+    // RTP/RTCP packet info
+    console.log("Trace:", trace);
+  });
+
+  //send an api request to the worker node
+  const nodeIp = process.env.WORKER_NODE_IP;
+  const sharedKey = process.env.SHARD_KEY;
+
+  if (!nodeIp) return console.error("WORKER IP not found");
+
+  await axios.post(nodeIp + "/api/start", {
+    listenIp,
+    streams: [
+      { videoPort: videoPort1, videoCodec: videoCodec1 },
+      { videoPort: videoPort2, videoCodec: videoCodec2 },
+    ],
+    outputDir: `/streams/${roomId}`,
+    roomId: roomId,
+  });
+
+
 }
