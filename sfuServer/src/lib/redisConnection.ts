@@ -34,66 +34,86 @@ export class RedisSingleton {
     return RedisSingleton.instance;
   }
 
-  public static async getStreamRoom(
-    roomId: string
-  ): Promise<{ users: string[]; offerer: string; answerer: string; streamUrl: string } | null> {
-    const roomData = await RedisSingleton.getInstance().get(`streamRoom:${roomId}`);
+  public static async getStreamRoom(roomId: string): Promise<{
+    users: string[];
+    offerer: string;
+    answerer: string;
+    streamUrl: string;
+  } | null> {
+    const roomData = await RedisSingleton.getInstance().get(
+      `streamRoom:${roomId}`
+    );
     if (roomData) {
       return JSON.parse(roomData);
     }
     return null;
   }
 
-  public static async addUserToRoom(
-    userId: string,
-  ): Promise<void> {
-    const peer = peers.get(userId);
-    if (!peer || !peer.socket || !peer.transport || !peer.producer) {
-      peers.delete(userId);
-      console.error(`Peer not found for user ${userId}`);
-      return;
-    }
-    const matchedUserId = await RedisSingleton.tryAndMatchUser(userId);
-    if (matchedUserId) {
-      console.log(`User ${userId} matched with user ${matchedUserId}`);
-      const matchedPeer = peers.get(matchedUserId);
+  public static async addUserToRoom(userId: string): Promise<string | null> {
+    try {
+      console.log(`Adding user ${userId} to room`);
+      const peer = peers.get(userId);
       if (
-        !matchedPeer ||
-        !matchedPeer.socket ||
-        !matchedPeer.transport ||
-        !matchedPeer.producer
+        !peer ||
+        !peer.socket ||
+        !peer.sendTransport ||
+        !peer.receiveTransport
+        || !peer.producer
       ) {
-        console.error(` matched user with id: ${matchedUserId} not found`);
-        return;
+        peers.delete(userId);
+        console.error(`Peer not found for user ${userId}`);
+        return null;
       }
-      const roomId = randomUUID();
-      const roomData = {
-        users: [matchedUserId, userId], //offerer, answerer
-        offerer: matchedUserId,
-        answerer: userId,
-        streamUrl: "",
-      };
+      const matchedUserId = await RedisSingleton.tryAndMatchUser(userId);
+      console.log(matchedUserId);
+      if (matchedUserId) {
+        console.log(`User ${userId} matched with user ${matchedUserId}`);
+        const matchedPeer = peers.get(matchedUserId);
+        if (
+          !matchedPeer ||
+          !matchedPeer.socket ||
+          !matchedPeer.sendTransport ||
+          !matchedPeer.receiveTransport ||
+          !matchedPeer.producer
+        ) {
+          console.error(` matched user with id: ${matchedUserId} not found`);
+          return null;
+        }
+        const roomId = randomUUID();
+        const roomData = {
+          users: [matchedUserId, userId], //offerer, answerer
+          offerer: matchedUserId,
+          answerer: userId,
+          streamUrl: "",
+        };
 
-      //store the streamRoom in redis
-      await RedisSingleton.getInstance().set(
-        `streamRoom:${roomId}`,
-        JSON.stringify(roomData)
-      );
+        //store the streamRoom in redis
+        await RedisSingleton.getInstance().set(
+          `streamRoom:${roomId}`,
+          JSON.stringify(roomData)
+        );
 
-      send(matchedPeer.socket, "matched", {
-        roomId,
-        matchedUserId: userId,
-        matchedUserTransportId: peer.transport.id,
-        producerId: peer.producer.id,
-      });
-      send(peer.socket, "matched", {
-        roomId,
-        matchedUserId,
-        matchedUserTransportId: matchedPeer.transport.id,
-        producerId: matchedPeer.producer.id,
-      });
-    } else {
-      send(peer.socket, "waiting-for-user", {});
+        send(matchedPeer.socket, "matched", {
+          roomId,
+          matchedUserId: userId,
+          matchedUserTransportId: peer.sendTransport.id,
+          producerId: peer.producer.id,
+        });
+        send(peer.socket, "matched", {
+          roomId,
+          matchedUserId,
+          matchedUserTransportId: matchedPeer.sendTransport.id,
+          producerId: matchedPeer.producer.id,
+        });
+
+        return roomId;
+      } else {
+        send(peer.socket, "waiting-for-user", {});
+        return null;
+      }
+    } catch (error) {
+      console.error("Error adding user to room:", error);
+      return null;
     }
   }
   public static async tryAndMatchUser(userId: string): Promise<string | null> {
@@ -103,9 +123,10 @@ export class RedisSingleton {
       WAITING_USER_QUEUE,
       userId
     );
+    console.log(result);
     if (typeof result === "string" && result.length > 0) {
       try {
-        return JSON.parse(result);
+        return result;
       } catch {
         return null;
       }

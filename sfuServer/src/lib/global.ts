@@ -7,7 +7,8 @@ export const peers = new Map<
   string,
   {
     socket: WebSocketWithUserId | null;
-    transport: mediasoup.types.Transport | null;
+    sendTransport: mediasoup.types.Transport | null;
+    receiveTransport: mediasoup.types.Transport | null;
     producer: mediasoup.types.Producer | null;
   }
 >();

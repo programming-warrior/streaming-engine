@@ -20,8 +20,10 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
   const userId = randomUUID();
   console.log(`New WebSocket connection from user ${userId}`);
   socket.userId = userId;
-  peers.set(userId, { socket, transport: null, producer: null });
+  peers.set(userId, { socket, sendTransport: null, receiveTransport: null, producer: null });
 
+  send(socket, "welcome", { userId });
+  
   socket.on("close", () => {
     peers.delete(userId);
     console.log(`Socket connection closed for user: ${userId}`);
@@ -51,7 +53,6 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
         break;
 
       case "consume": 
-       
         await handleConsume(socket, payload);
         break;
 
