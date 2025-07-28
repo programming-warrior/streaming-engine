@@ -13,7 +13,7 @@ ENV PATH="/venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY streamToHlsConversion.sh /streamToHlsConversion.sh
+COPY streamToHlsConversion.sh streamToHlsConversion.sh
 RUN chmod +x /app/streamToHlsConversion.sh
 
 
