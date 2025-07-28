@@ -4,3 +4,6 @@ sfuServer/node_modules
 sfuServer/node_modules/*
 sfuServer/.env
 .env
+client/node_modules
+client/dist
+client/.env
