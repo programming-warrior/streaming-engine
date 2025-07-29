@@ -29,7 +29,7 @@ export async function sendStream(roomId: string) {
 
     // 1. Create a transport specifically for the first producer
     const plainTransport1 = await router.createPlainTransport({
-      listenIp: process.env.MEDIASOUP_LISTEN_IP || "127.0.0.1",
+      listenIp: "172.24.240.1",
       rtcpMux: false,
       comedia: true,
     });
@@ -48,11 +48,11 @@ export async function sendStream(roomId: string) {
 
     // const listenIp = plainTransport1.tuple.localIp;
     //TODO - remove hardcoded ip
-    const listenIp = "host.docker.internal"
+    const listenIp = "172.24.240.1"
 
 
     const plainTransport2 = await router.createPlainTransport({
-      listenIp: process.env.MEDIASOUP_LISTEN_IP || "127.0.0.1",
+      listenIp: "172.24.240.1",
       rtcpMux: false,
       comedia: true,
     });
@@ -88,8 +88,8 @@ export async function sendStream(roomId: string) {
     await axios.post(nodeIp + "/api/start", {
       listenIp,
       streams: [
-        { videoPort: videoPort1, videoCodec: videoCodec1 },
-        { videoPort: videoPort2, videoCodec: videoCodec2 },
+        { videoPort: videoPort1, videoCodec: videoCodec1, videoPayloadType: videoPayloadType1 },
+        { videoPort: videoPort2, videoCodec: videoCodec2, videoPayloadType: videoPayloadType2 },
       ],
       outputDir: `/streams/${roomId}`,
       roomId: roomId,
