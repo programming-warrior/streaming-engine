@@ -29,7 +29,7 @@ export async function sendStream(roomId: string) {
 
     // 1. Create a transport specifically for the first producer
     const plainTransport1 = await router.createPlainTransport({
-      listenIp: "172.24.240.1",
+      listenIp: "0.0.0.0",
       rtcpMux: false,
       comedia: true,
     });
@@ -52,7 +52,7 @@ export async function sendStream(roomId: string) {
 
 
     const plainTransport2 = await router.createPlainTransport({
-      listenIp: "172.24.240.1",
+      listenIp: "0.0.0.0",
       rtcpMux: false,
       comedia: true,
     });

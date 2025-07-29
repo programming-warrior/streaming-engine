@@ -104,35 +104,36 @@ app.post("/api/start", async (req: Request, res: Response) => {
     // Extract ports for verification
     const ports = streams.map((stream: any) => stream.videoPort);
     
-    console.log("Step 1: Creating SDP file...");
+    console.log(" Creating SDP file...");
     const outputPath = path.join("tmp", `stream-${roomId}.sdp`);
     const fullSdpPath = await createSdpFile(listenIp, streams, outputPath);
     
     // CRITICAL: Verify MediaSoup is actually sending RTP streams
-    console.log("Step 2: Verifying MediaSoup RTP streams...");
-    const streamsActive = await verifyRTPStreams(ports, 15000);
+    // console.log("Verifying MediaSoup RTP streams...");
+    // const streamsActive = await verifyRTPStreams(ports, 15000);
     
-    if (!streamsActive) {
-      console.error("MediaSoup streams not detected! Check your MediaSoup server.");
-      return res.status(500).json({ 
-        error: "MediaSoup streams not active",
-        details: "No RTP packets detected on expected ports"
-      });
-    }
+    // if (!streamsActive) {
+    //   console.error("MediaSoup streams not detected! Check your MediaSoup server.");
+    //   return res.status(500).json({ 
+    //     error: "MediaSoup streams not active",
+    //     details: "No RTP packets detected on expected ports"
+    //   });
+    // }
     
-    console.log("Step 3: MediaSoup streams verified, starting Docker...");
     
     const portMappings = streams
       .map((stream: any) => `-p ${stream.videoPort}:${stream.videoPort}/udp`)
       .join(" ");
     
-    const outputVolume = path.join(__dirname, "output", roomId);
-    if (!fs.existsSync(outputVolume)) {
-      fs.mkdirSync(outputVolume, { recursive: true });
-    }
+    // const outputVolume = path.join(__dirname, "output", roomId);
+    // if (!fs.existsSync(outputVolume)) {
+    //   fs.mkdirSync(outputVolume, { recursive: true });
+    // }
     
+    console.log(portMappings);
+
     // Add network configuration for better container connectivity
-    const dockerCmd = `docker run --rm --network host ${portMappings} -v "${fullSdpPath}":/app/stream.sdp -v "${outputVolume}":/output ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
+    const dockerCmd = `docker run --rm  ${portMappings} -v "${fullSdpPath}":/app/stream.sdp  ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
     
     console.log("Executing Docker command:", dockerCmd);
     
