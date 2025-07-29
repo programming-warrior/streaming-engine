@@ -11,7 +11,6 @@ export default function StreamPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const receiveVideoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [device, setDevice] = useState<Device | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<Transport | null>(null);
@@ -141,7 +140,6 @@ export default function StreamPage() {
         console.error("Cannot produce video");
         return;
       }
-      setDevice(device);
       deviceRef.current = device;
       console.log("sending createWebRtcTransport");
       console.log(socket);
