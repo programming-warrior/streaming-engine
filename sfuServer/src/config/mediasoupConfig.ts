@@ -53,8 +53,8 @@ export const config = {
     webRtcTransportOptions: {
       listenIps: [
         {
-          ip: process.env.MEDIASOUP_LISTEN_IP || "127.0.0.1",
-          announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP || null,
+          ip: "0.0.0.0",
+          announcedIp: process.env.MEDIASOUP_LISTENIP || null,
         },
       ],
       enableUdp: true,
