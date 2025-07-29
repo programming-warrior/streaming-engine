@@ -29,7 +29,7 @@ export async function sendStream(roomId: string) {
 
     // 1. Create a transport specifically for the first producer
     const plainTransport1 = await router.createPlainTransport({
-      listenIp: process.env.MEDIASOUP_LISTENIP || "127.0.0.1",
+      listenIp: "0.0.0.0",
       rtcpMux: false,
       comedia: true,
     });
@@ -43,22 +43,19 @@ export async function sendStream(roomId: string) {
     const videoPort1 = plainTransport1.tuple.localPort;
     const videoCodec1 =
       consumer1.rtpParameters.codecs[0].mimeType.split("/")[1];
-    const videoPayloadType1= consumer1.rtpParameters.codecs[0].payloadType;
-    
+    const videoPayloadType1 = consumer1.rtpParameters.codecs[0].payloadType;
 
-    const listenIp = plainTransport1.tuple.localIp;
-    console.log("listenIP: " + listenIp )
+    const listenIp = process.env.MEDIASOUP_LISTENIP;
+    console.log("listenIP: " + listenIp);
     //TODO - remove hardcoded ip
     // const listenIp = "172.24.240.1"
 
-
     const plainTransport2 = await router.createPlainTransport({
-      listenIp: process.env.MEDIASOUP_LISTENIP || "127.0.0.1",
+      listenIp: "0.0.0.0", 
       rtcpMux: false,
       comedia: true,
     });
 
-    
     const consumer2 = await plainTransport2.consume({
       producerId: producer2.id,
       rtpCapabilities: router.rtpCapabilities,
@@ -68,7 +65,7 @@ export async function sendStream(roomId: string) {
     const videoPort2 = plainTransport2.tuple.localPort;
     const videoCodec2 =
       consumer2.rtpParameters.codecs[0].mimeType.split("/")[1];
-    const videoPayloadType2= consumer2.rtpParameters.codecs[0].payloadType;
+    const videoPayloadType2 = consumer2.rtpParameters.codecs[0].payloadType;
 
     plainTransport1.on("trace", (trace) => {
       // RTP/RTCP packet info
@@ -89,13 +86,21 @@ export async function sendStream(roomId: string) {
     await axios.post(nodeIp + "/api/start", {
       listenIp,
       streams: [
-        { videoPort: videoPort1, videoCodec: videoCodec1, videoPayloadType: videoPayloadType1 },
-        { videoPort: videoPort2, videoCodec: videoCodec2, videoPayloadType: videoPayloadType2 },
+        {
+          videoPort: videoPort1,
+          videoCodec: videoCodec1,
+          videoPayloadType: videoPayloadType1,
+        },
+        {
+          videoPort: videoPort2,
+          videoCodec: videoCodec2,
+          videoPayloadType: videoPayloadType2,
+        },
       ],
       outputDir: `/streams/${roomId}`,
       roomId: roomId,
     });
-  } catch (e:any) {
-    console.log(e.message);
+  } catch (e: any) {
+    console.error("sendStreamError: " + e.message);
   }
 }
