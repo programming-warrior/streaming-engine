@@ -83,7 +83,7 @@ export async function sendStream(roomId: string) {
 
     if (!nodeIp) return console.error("WORKER IP not found");
 
-    await axios.post(nodeIp + "/api/start", {
+    await axios.post("http://"+ nodeIp + "/api/start", {
       listenIp,
       streams: [
         {
