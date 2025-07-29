@@ -64,24 +64,91 @@
  # Cleanup
 # rm -rf  "$OUTPUT_PATH"
 
-ls 
+#!/bin/bash
 
+set -e
 
+echo "Starting FFmpeg conversion with connection verification..."
+echo "Working directory: $(pwd)"
+echo "SDP file contents:"
+cat stream.sdp
+
+# Extract ports from SDP for verification
+PORTS=$(grep "m=video" stream.sdp | awk '{print $2}')
+echo "Expected RTP ports: $PORTS"
+
+# Function to check if we're receiving packets on a port
+check_rtp_stream() {
+    local port=$1
+    echo "Checking for RTP packets on port $port..."
+    
+    # Use netstat to check if port is listening
+    netstat -uln | grep ":$port " || echo "Port $port not bound"
+    
+    # Try to capture a few packets with timeout
+    timeout 10 tcpdump -i any -c 5 udp port $port 2>/dev/null || echo "No packets detected on port $port within 10 seconds"
+}
+
+# Check each port
+for port in $PORTS; do
+    check_rtp_stream $port
+done
+
+echo "Starting FFmpeg with extended timeout and connection retry..."
+
+# Create output directory
+mkdir -p /output/stream_0
+
+# Try FFmpeg with connection timeout and retry logic
 ffmpeg \
+-loglevel info \
 -protocol_whitelist file,udp,rtp \
+-analyzeduration 10000000 \
+-probesize 10000000 \
+-timeout 30000000 \
+-reconnect 1 \
+-reconnect_at_eof 1 \
+-reconnect_streamed 1 \
+-reconnect_delay_max 10 \
 -i stream.sdp \
 -filter_complex \
-  "[0:v:0]scale=1280:720[v0]; \
-   [0:v:1]scale=1280:720[v1]; \
+  "[0:v:0]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v0]; \
+   [0:v:1]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v1]; \
    [v0][v1]hstack=inputs=2[vout]" \
 -map "[vout]" \
--c:v libx264 -preset veryfast -crf 23 -sc_threshold 0 \
+-c:v libx264 \
+-preset ultrafast \
+-crf 28 \
+-g 60 \
+-r 30 \
 -f hls \
 -hls_time 4 \
 -hls_list_size 5 \
--hls_flags delete_segments \
--master_pl_name master.m3u8 \
--hls_segment_filename "stream_%v/data%02d.ts" \
--var_stream_map "v:0" "stream_%v.m3u8"
+-hls_flags delete_segments+independent_segments \
+-hls_segment_filename "/output/stream_0/data%02d.ts" \
+"/output/stream_0.m3u8" \
+|| {
+    echo "FFmpeg failed. Attempting fallback with individual stream processing..."
+    
+    # Fallback: try processing one stream at a time
+    ffmpeg \
+    -loglevel debug \
+    -protocol_whitelist file,udp,rtp \
+    -timeout 15000000 \
+    -i stream.sdp \
+    -map 0:v:0 \
+    -c:v libx264 \
+    -preset ultrafast \
+    -s 1280x720 \
+    -r 30 \
+    -f hls \
+    -hls_time 4 \
+    -hls_list_size 5 \
+    -hls_flags delete_segments \
+    -hls_segment_filename "/output/stream_0/data%02d.ts" \
+    "/output/stream_0.m3u8"
+}
+
+echo "FFmpeg processing completed!"
 
 
