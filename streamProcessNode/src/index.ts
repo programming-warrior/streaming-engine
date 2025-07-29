@@ -1,10 +1,14 @@
 import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-const { exec } = require("child_process");
+import { exec } from "child_process"
+import dotenv from "dotenv"
+dotenv.config()
 
 const app = express();
 app.use(express.json());
+
+
 
 async function createSdpFile(
   listenIp: string,
@@ -58,10 +62,10 @@ app.post("/api/start", async (req: Request, res: Response) => {
     // run the docker container
     //DOCKER COMMAND: ---
 
-    const dockerCmd = `docker run --rm -v ${path.join(
+    const dockerCmd = `docker run  -v ${path.join(
       __dirname,
       outputPath
-    )}:/input.sdp your-docker-image-name:latest`;
+    )}:/app/stream.sdp ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
 
     // Run the Docker command
     exec(dockerCmd, (error: any, stdout: string, stderr: string) => {
@@ -78,10 +82,8 @@ app.post("/api/start", async (req: Request, res: Response) => {
       // Send 201 response after successful start
       res
         .status(201)
-        .json({ message: "Docker container started successfully" });
+        .json({ message: "success" });
     });
-
-    res.status(201).json({ message: "success" });
   } catch (e: any) {
     console.error(e);
     return res.status(500).json({ error: e.message });

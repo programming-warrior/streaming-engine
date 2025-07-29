@@ -46,7 +46,9 @@ export async function sendStream(roomId: string) {
     const videoPayloadType1= consumer1.rtpParameters.codecs[0].payloadType;
     
 
-    const listenIp = plainTransport1.tuple.localIp;
+    // const listenIp = plainTransport1.tuple.localIp;
+    //TODO - remove hardcoded ip
+    const listenIp = "host.docker.internal"
 
 
     const plainTransport2 = await router.createPlainTransport({
