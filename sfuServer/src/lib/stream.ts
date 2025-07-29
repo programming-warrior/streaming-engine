@@ -29,7 +29,7 @@ export async function sendStream(roomId: string) {
 
     // 1. Create a transport specifically for the first producer
     const plainTransport1 = await router.createPlainTransport({
-      listenIp: "0.0.0.0",
+      listenIp: process.env.MEDIASOUP_LISTENIP || "127.0.0.1",
       rtcpMux: false,
       comedia: true,
     });
@@ -46,13 +46,14 @@ export async function sendStream(roomId: string) {
     const videoPayloadType1= consumer1.rtpParameters.codecs[0].payloadType;
     
 
-    // const listenIp = plainTransport1.tuple.localIp;
+    const listenIp = plainTransport1.tuple.localIp;
+    console.log("listenIP: " + listenIp )
     //TODO - remove hardcoded ip
-    const listenIp = "172.24.240.1"
+    // const listenIp = "172.24.240.1"
 
 
     const plainTransport2 = await router.createPlainTransport({
-      listenIp: "0.0.0.0",
+      listenIp: process.env.MEDIASOUP_LISTENIP || "127.0.0.1",
       rtcpMux: false,
       comedia: true,
     });
