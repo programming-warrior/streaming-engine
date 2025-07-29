@@ -133,7 +133,7 @@ app.post("/api/start", async (req: Request, res: Response) => {
     console.log(portMappings);
 
     // Add network configuration for better container connectivity
-    const dockerCmd = `docker run --rm  ${portMappings} -v "${fullSdpPath}":/app/stream.sdp  ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
+    const dockerCmd = `sudo docker run --rm  ${portMappings} -v "${fullSdpPath}":/app/stream.sdp  ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
     
     console.log("Executing Docker command:", dockerCmd);
     
