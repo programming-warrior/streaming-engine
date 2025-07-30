@@ -33,11 +33,14 @@ mkdir -p "$OUTPUT_DIR"
 echo "--- Starting FFMPEG for Real-time HLS ---"
 ffmpeg \
 -loglevel info \
--fflags +flush_packets \
+-fflags +flush_packets+nobuffer \
 -flush_packets 1 \
 -protocol_whitelist file,udp,rtp \
--analyzeduration 5M \
--probesize 5M \
+-analyzeduration 1M \
+-probesize 1M \
+-max_delay 500000 \
+-reorder_queue_size 0 \
+-buffer_size 512k \
 -avoid_negative_ts make_zero \
 -use_wallclock_as_timestamps 1 \
 -i ${SDP_FILE} \
