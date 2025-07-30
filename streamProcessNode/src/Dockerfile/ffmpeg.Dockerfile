@@ -17,6 +17,10 @@ COPY streamToHlsConversion.sh streamToHlsConversion.sh
 RUN chmod +x /app/streamToHlsConversion.sh
 
 
+EXPOSE 42409
+
+EXPOSE 40752
+
 # Verify AWS CLI installation
 RUN aws --version
 
