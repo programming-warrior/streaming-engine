@@ -9,7 +9,7 @@ SDP_FILE="stream.sdp"
 OUTPUT_DIR="/output" # This should be a mounted volume
 S3_BUCKET="${S3_BUCKET}"
 AWS_REGION="${AWS_REGION}"
-ROOM_ID= "1234"
+ROOM_ID="1234"
 S3_PREFIX="live-stream/$ROOM_ID"
 
 
