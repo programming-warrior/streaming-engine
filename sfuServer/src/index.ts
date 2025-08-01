@@ -1,3 +1,5 @@
+import dotenv from "dotenv";
+dotenv.config();
 import { createMedisoup, worker, router } from "./mediaSoupManager";
 import http from "http";
 import { WebSocketServer } from "ws";
@@ -5,8 +7,7 @@ import {
   handleSocketConnection,
 } from "./lib/handleSocketConnection";
 import { WebSocketMessageType, WebSocketWithUserId } from "./lib/types";
-import dotenv from "dotenv";
-dotenv.config();
+
 import { randomUUID } from "crypto";
 import { RedisSingleton } from "./lib/redisConnection";
 import * as mediasoup from "mediasoup";
