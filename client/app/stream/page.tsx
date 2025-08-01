@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { Transport } from "mediasoup-client/types";
 import { useRouter } from "next/navigation";
+import { RtpCapabilities } from "mediasoup-client/types";
 // import { Transport } from 'mediasoup-client/lib/Transport';
 
 export default function StreamPage() {
@@ -129,7 +130,7 @@ export default function StreamPage() {
   };
 
   const handleRouterRtpCapabilities = async (
-    routerRtpCapabilities: any,
+    routerRtpCapabilities: RtpCapabilities,
     socket: WebSocket
   ) => {
     try {
@@ -142,7 +143,6 @@ export default function StreamPage() {
       }
       deviceRef.current = device;
       console.log("sending createWebRtcTransport");
-      console.log(socket);
       socket?.send(JSON.stringify({ event: "createWebRtcTransport" }));
       console.log("sent createWebRtcTransport");
     } catch (error) {
