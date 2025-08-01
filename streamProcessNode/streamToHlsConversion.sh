@@ -18,12 +18,13 @@ S3_PREFIX="live-stream/$ROOM_ID"
 test_udp_connection() {
     local ip="$1"
     local port="$2"
-    echo "Testing UDP connectivity to $ip:$port..."
+    echo "Sending RTP packet to $ip:$port..."
 
     #Send an dummy RTP packet 
-    ffmpeg -re -stream_loop -1 -i test.mp4 \
-  -an -c:v libx264 -preset ultrafast -f rtp \
+ ffmpeg -f lavfi -i color=c=black:s=640x360:d=0.04 \
+  -vframes 1 -an -c:v libx264 -preset ultrafast -f rtp \
   "rtp://$ip:$port?pkt_size=1200"
+
 }
 
 
