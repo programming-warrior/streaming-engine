@@ -30,6 +30,12 @@ export class RedisSingleton {
       RedisSingleton.instance.on("error", (err) => {
         console.error("Redis Connection Error:", err);
       });
+      RedisSingleton.instance.on("close", () => {
+        console.error("Redis closing...");
+      })
+      RedisSingleton.instance.on("reconnecting", () => {
+        console.error("Redis ReConnecting...");
+      })
     }
     return RedisSingleton.instance;
   }
@@ -47,6 +53,15 @@ export class RedisSingleton {
       return JSON.parse(roomData);
     }
     return null;
+  }
+
+  public static async removeUserFromtheQueeu(userId: string): Promise<any> {
+    try{
+      await this.getInstance().lrem(WAITING_USER_QUEUE, 1, userId)
+    }
+    catch(e:any){
+      console.error(e.message);
+    }
   }
 
   public static async addUserToRoom(userId: string): Promise<string | null> {
