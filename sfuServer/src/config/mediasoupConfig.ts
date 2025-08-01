@@ -1,4 +1,4 @@
-import os from "os";
+import * as os from "os";
 import * as mediasoup from "mediasoup";
 
 export const config = {
@@ -53,10 +53,10 @@ export const config = {
     webRtcTransportOptions: {
       listenIps: [
         {
-          ip: "0.0.0.0",
-          announcedIp: process.env.MEDIASOUP_LISTENIP || null,
+          ip: process.env.LOCAL_BIND_IP || "127.0.0.1",
+          announcedIp: process.env.ANNOUNCED_IP || ""
         },
-      ],
+      ], 
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
