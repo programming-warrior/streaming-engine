@@ -13,6 +13,29 @@ ROOM_ID="1234"
 S3_PREFIX="live-stream/$ROOM_ID"
 
 
+
+# Usage: test_udp_connection <ip> <port>
+test_udp_connection() {
+    local ip="$1"
+    local port="$2"
+    echo "Testing UDP connectivity to $ip:$port..."
+
+    # Send a UDP packet and wait to see if the port is reachable
+    # This test is best-effort since UDP is connectionless
+    timeout 2s bash -c "echo -n 'ping' | nc -u -w1 $ip $port"
+
+    if [ $? -eq 0 ]; then
+        echo "✅ UDP packet sent to $ip:$port (no confirmation if received)."
+    else
+        echo "❌ Failed to send UDP packet to $ip:$port."
+    fi
+}
+
+
+test_connection $IP $PORT1
+
+test_connection $IP $PORT2
+
 # --- Environment Variables Check ---
 echo "--- Checking Environment Variables ---"
 if [ -z "$S3_BUCKET" ]; then

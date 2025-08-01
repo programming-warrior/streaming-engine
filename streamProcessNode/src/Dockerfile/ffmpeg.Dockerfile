@@ -4,7 +4,8 @@ FROM jrottenberg/ffmpeg:7-alpine
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    bash && \
+    bash \
+    netcat-openbsd && \
     python3 -m venv /venv && \
     /venv/bin/pip install --upgrade pip && \
     /venv/bin/pip install awscli
