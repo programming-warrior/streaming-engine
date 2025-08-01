@@ -32,9 +32,9 @@ test_udp_connection() {
 }
 
 
-test_connection $IP $PORT1
+test_udp_connection $IP $PORT1
 
-test_connection $IP $PORT2
+test_udp_connection $IP $PORT2
 
 # --- Environment Variables Check ---
 echo "--- Checking Environment Variables ---"
