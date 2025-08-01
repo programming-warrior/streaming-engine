@@ -1,36 +1,16 @@
 #!/bin/bash
 # This script is designed to be the ENTRYPOINT of a Docker container.
 # It waits for RTP streams defined in stream.sdp, combines them, and creates an HLS stream.
+# HLS segments are uploaded directly to AWS S3.
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
 SDP_FILE="stream.sdp"
-OUTPUT_DIR="/output" # This should be a mounted volume
+TEMP_DIR="/tmp/hls_output"
 S3_BUCKET="${S3_BUCKET}"
+S3_PREFIX="${S3_PREFIX:-live-stream}"
 AWS_REGION="${AWS_REGION}"
-ROOM_ID="1234"
-S3_PREFIX="live-stream/$ROOM_ID"
-
-
-
-# Usage: test_udp_connection <ip> <port>
-test_udp_connection() {
-    local ip="$1"
-    local port="$2"
-    echo "Sending RTP packet to $ip:$port..."
-
-    #Send an dummy RTP packet 
- ffmpeg -f lavfi -i color=c=black:s=640x360:d=0.04 \
-  -vframes 1 -an -c:v libx264 -preset ultrafast -f rtp \
-  "rtp://$ip:$port?pkt_size=1200"
-
-}
-
-
-test_udp_connection $IP $PORT1
-
-test_udp_connection $IP $PORT2
 
 # --- Environment Variables Check ---
 echo "--- Checking Environment Variables ---"
@@ -40,13 +20,17 @@ if [ -z "$S3_BUCKET" ]; then
 fi
 
 echo "S3 Bucket: $S3_BUCKET"
+echo "S3 Prefix: $S3_PREFIX"
 echo "AWS Region: $AWS_REGION"
 
+# --- AWS CLI Check ---
+echo "--- Verifying AWS CLI ---"
 if ! command -v aws &> /dev/null; then
     echo "Error: AWS CLI is not installed"
     exit 1
 fi
 
+# Test AWS credentials
 if ! aws sts get-caller-identity &> /dev/null; then
     echo "Error: AWS credentials not configured or invalid"
     echo "Make sure to set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and optionally AWS_SESSION_TOKEN"
@@ -65,16 +49,15 @@ echo "SDP file found. Contents:"
 cat "$SDP_FILE"
 echo "--------------------------------"
 
-# --- Create output directory if it doesn't exist ---
-mkdir -p "$OUTPUT_DIR"
-
+# --- Create temporary directory ---
+mkdir -p "$TEMP_DIR"
 
 # --- Background S3 Upload Process ---
 echo "--- Starting S3 Upload Monitor ---"
 upload_to_s3() {
     while true; do
         # Upload .ts files
-        for file in "$OUTPUT_DIR"/*.ts; do
+        for file in "$TEMP_DIR"/*.ts; do
             if [ -f "$file" ]; then
                 filename=$(basename "$file")
                 echo "Uploading $filename to S3..."
@@ -85,14 +68,14 @@ upload_to_s3() {
                 
                 # Remove local file after successful upload
                 if [ $? -eq 0 ]; then
-                    rm "$file"
-                    echo "Successfully uploaded and removed $filename"
+                    # rm "$file"
+                    echo "Successfully uploaded  $filename"
                 fi
             fi
         done
         
         # Upload playlist files
-        for playlist in "$OUTPUT_DIR"/*.m3u8; do
+        for playlist in "$TEMP_DIR"/*.m3u8; do
             if [ -f "$playlist" ]; then
                 filename=$(basename "$playlist")
                 echo "Uploading playlist $filename to S3..."
@@ -110,9 +93,9 @@ upload_to_s3() {
     done
 }
 
+# Start the upload process in background
 upload_to_s3 &
 UPLOAD_PID=$!
-
 
 # --- Cleanup function ---
 cleanup() {
@@ -121,7 +104,7 @@ cleanup() {
     
     # Final upload of any remaining files
     echo "Final upload of remaining files..."
-    for file in "$OUTPUT_DIR"/*; do
+    for file in "$TEMP_DIR"/*; do
         if [ -f "$file" ]; then
             filename=$(basename "$file")
             aws s3 cp "$file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
@@ -130,23 +113,15 @@ cleanup() {
     done
     
     # Clean up temp directory
-    rm -rf "$OUTPUT_DIR"
+    rm -rf "$TEMP_DIR"
     echo "Cleanup completed"
 }
 
-
+# Set up trap for cleanup on exit
 trap cleanup EXIT INT TERM
 
 # --- Main FFMPEG Command ---
-# Key changes for real-time HLS output:
-# 1. Added -fflags +flush_packets to force packet flushing
-# 2. Added -flush_packets 1 for immediate output
-# 3. Reduced -hls_time to 2 seconds for faster segment creation
-# 4. Added -hls_flags +append_list+delete_segments+split_by_time
-# 5. Added -avoid_negative_ts make_zero to handle timing issues
-# 6. Added -use_wallclock_as_timestamps 1 for real-time processing
-
-echo "--- Starting FFMPEG for Real-time HLS ---"
+echo "--- Starting FFMPEG for Real-time HLS to S3 ---"
 ffmpeg \
 -loglevel info \
 -fflags +flush_packets \
@@ -173,8 +148,8 @@ ffmpeg \
 -hls_time 2 \
 -hls_list_size 10 \
 -hls_flags append_list+delete_segments+split_by_time \
--hls_segment_filename "${OUTPUT_DIR}/data%02d.ts" \
+-hls_segment_filename "${TEMP_DIR}/data%02d.ts" \
 -hls_start_number_source epoch \
-"${OUTPUT_DIR}/master.m3u8"
+"${TEMP_DIR}/master.m3u8"
 
 echo "--- FFMPEG process finished ---"
