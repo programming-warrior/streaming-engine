@@ -10,6 +10,7 @@ import {
 } from "./signallingHandlers";
 import { WebSocketMessageType } from "./types";
 import { peers } from "./global";
+import { RedisSingleton } from "./redisConnection";
 
 export function send(ws: WebSocket, event: string, payload: any) {
   const message = JSON.stringify({ event, payload });
@@ -24,9 +25,10 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
 
   send(socket, "welcome", { userId });
   
-  socket.on("close", () => {
+  socket.on("close", async() => {
     peers.delete(userId);
     console.log(`Socket connection closed for user: ${userId}`);
+    RedisSingleton.removeUserFromtheQueeu(userId).catch((e)=>{})
   });
 
   socket.on("message", async (message: WebSocketMessageType) => {
@@ -65,7 +67,4 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
     console.error(`Socket error for user ${userId}:`, error);
   });
 
-  socket.on("close", () => {
-    console.log(`WebSocket connection closed for user ${userId}`);
-  });
 };
