@@ -20,15 +20,10 @@ test_udp_connection() {
     local port="$2"
     echo "Testing UDP connectivity to $ip:$port..."
 
-    # Send a UDP packet and wait to see if the port is reachable
-    # This test is best-effort since UDP is connectionless
-    timeout 2s bash -c "echo -n 'ping' | nc -u -w1 $ip $port"
-
-    if [ $? -eq 0 ]; then
-        echo "✅ UDP packet sent to $ip:$port (no confirmation if received)."
-    else
-        echo "❌ Failed to send UDP packet to $ip:$port."
-    fi
+    #Send an dummy RTP packet 
+    ffmpeg -re -stream_loop -1 -i test.mp4 \
+  -an -c:v libx264 -preset ultrafast -f rtp \
+  "rtp://$ip:$port?pkt_size=1200"
 }
 
 
