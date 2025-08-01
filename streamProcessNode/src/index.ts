@@ -95,7 +95,7 @@ app.post("/api/start", async (req: Request, res: Response) => {
     console.log(portMappings);
 
     // Add network configuration for better container connectivity
-  const dockerCmd = `docker run --rm ${portMappings} ` +
+  const dockerCmd = `sudo docker run --rm ${portMappings} ` +
     `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
     `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
     `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
