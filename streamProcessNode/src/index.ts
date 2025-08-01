@@ -10,63 +10,41 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// Function to verify MediaSoup is sending data
-async function verifyRTPStreams(ports: number[], timeout = 10000): Promise<boolean> {
-  console.log(`Verifying RTP streams on ports: ${ports.join(', ')}`);
-  
-  const promises = ports.map(port => {
-    return new Promise<boolean>((resolve) => {
-      const socket = dgram.createSocket('udp4');
-      let packetReceived = false;
-      
-      const timer = setTimeout(() => {
-        socket.close();
-        resolve(packetReceived);
-      }, timeout);
-      
-      socket.on('message', (msg, rinfo) => {
-        console.log(`Received RTP packet on port ${port} from ${rinfo.address}:${rinfo.port}`);
-        packetReceived = true;
-        clearTimeout(timer);
-        socket.close();
-        resolve(true);
-      });
-      
-      socket.on('error', (err) => {
-        console.error(`Socket error on port ${port}:`, err);
-        clearTimeout(timer);
-        socket.close();
-        resolve(false);
-      });
-      
-      try {
-        socket.bind(port, '0.0.0.0');
-        console.log(`Listening for RTP packets on port ${port}`);
-      } catch (err) {
-        console.error(`Failed to bind to port ${port}:`, err);
-        clearTimeout(timer);
-        resolve(false);
-      }
-    });
-  });
-  
-  const results = await Promise.all(promises);
-  const allReceived = results.every(result => result);
-  
-  console.log(`RTP verification results:`, results);
-  return allReceived;
-}
+
+// Port1: 42409 Port2: 40752
+const port1= 42409
+const port2= 40752
+
+
+// function createRtpLogger(port:number) {
+//   const socket = dgram.createSocket('udp4');
+//   socket.on('message', (msg, rinfo) => {
+//     console.log(`[Port ${port}] RTP Packet from ${rinfo.address}:${rinfo.port}, size: ${msg.length}`);
+//   });
+//   socket.on('listening', () => {
+//   const address = socket.address();
+//   console.log(`UDP Server listening on ${address.address}:${address.port}`);
+// });
+//   socket.bind(port);
+// }
+
+
+// createRtpLogger(port1)
+// createRtpLogger(port2)
+
+const CONTAINER_IP = "172.25.0.10";
+
 
 async function createSdpFile(
-  listenIp: string,
+  containerIp: string,
   streamInfo: any,
   outputPath: string
 ) {
   // Enhanced SDP with proper video parameters
-  const sdpContent = `v=0
-o=- 0 0 IN IP4 ${listenIp}
+ const sdpContent = `v=0
+o=- 0 0 IN IP4 ${process.env.BIND_IP}
 s=Mediasoup-Broadcast
-c=IN IP4 ${listenIp}
+c=IN IP4 ${process.env.BIND_IP}
 t=0 0
 m=video ${streamInfo[0].videoPort} RTP/AVP ${streamInfo[0].videoPayloadType}
 a=rtpmap:${streamInfo[0].videoPayloadType} ${streamInfo[0].videoCodec}/90000
@@ -93,10 +71,11 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
   }
 }
 
+
 app.post("/api/start", async (req: Request, res: Response) => {
   const { listenIp, streams, outputDir, roomId } = req.body;
   
-  if (!listenIp || !outputDir || !streams || !roomId) {
+  if ( !streams || !roomId) {
     return res.status(400).json({ error: "Invalid parameters" });
   }
 
@@ -106,34 +85,23 @@ app.post("/api/start", async (req: Request, res: Response) => {
     
     console.log(" Creating SDP file...");
     const outputPath = path.join("tmp", `stream-${roomId}.sdp`);
-    const fullSdpPath = await createSdpFile(listenIp, streams, outputPath);
-    
-    // CRITICAL: Verify MediaSoup is actually sending RTP streams
-    // console.log("Verifying MediaSoup RTP streams...");
-    // const streamsActive = await verifyRTPStreams(ports, 15000);
-    
-    // if (!streamsActive) {
-    //   console.error("MediaSoup streams not detected! Check your MediaSoup server.");
-    //   return res.status(500).json({ 
-    //     error: "MediaSoup streams not active",
-    //     details: "No RTP packets detected on expected ports"
-    //   });
-    // }
-    
+    const fullSdpPath = await createSdpFile(CONTAINER_IP, streams, outputPath);
     
     const portMappings = streams
       .map((stream: any) => `-p ${stream.videoPort}:${stream.videoPort}/udp`)
       .join(" ");
     
-    // const outputVolume = path.join(__dirname, "output", roomId);
-    // if (!fs.existsSync(outputVolume)) {
-    //   fs.mkdirSync(outputVolume, { recursive: true });
-    // }
     
     console.log(portMappings);
 
     // Add network configuration for better container connectivity
-    const dockerCmd = `sudo docker run --rm  ${portMappings} -v "${fullSdpPath}":/app/stream.sdp  ${process.env.FFMPEG_DOCKERIMAGE_URL}`;
+  const dockerCmd = `docker run --rm ${portMappings} ` +
+    `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
+    `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
+    `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
+    `-e AWS_REGION=${process.env.AWS_REGION} ` +
+    `-v "${fullSdpPath}":/app/stream.sdp ` +
+    `${process.env.FFMPEG_DOCKERIMAGE_URL}`;
     
     console.log("Executing Docker command:", dockerCmd);
     
@@ -157,19 +125,18 @@ app.post("/api/start", async (req: Request, res: Response) => {
     dockerProcess.on('close', (code) => {
       if (code === 0) {
         console.log('Docker process completed successfully');
-        res.status(201).json({ 
-          message: "success", 
-          roomId,
-          outputPath: `/output/${roomId}` 
-        });
+        // res.status(201).json({ 
+        //   message: "success", 
+        //   roomId,
+        // });
       } else {
         console.error(`Docker process exited with code ${code}`);
-        res.status(500).json({ 
-          error: "Docker process failed", 
-          code,
-          details: stderr,
-          stdout: stdout
-        });
+        // res.status(500).json({ 
+        //   error: "Docker process failed", 
+        //   code,
+        //   details: stderr,
+        //   stdout: stdout
+        // });
       }
     });
     
@@ -180,6 +147,10 @@ app.post("/api/start", async (req: Request, res: Response) => {
         details: error.message 
       });
     });
+
+    return res.status(202).json({
+      message:"Container started"
+    })
     
   } catch (e: any) {
     console.error('Server error:', e);
