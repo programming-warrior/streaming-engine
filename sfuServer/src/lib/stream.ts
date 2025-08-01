@@ -40,7 +40,8 @@ export async function sendStream(roomId: string) {
       console.log(`🔗 Transport1 Tuple Updated:`, tuple);
     });
 
-    const videoPort1 = plainTransport1.tuple.localPort;
+
+    const videoPort1 = 42409; //TODO: find a better approach
 
     await plainTransport1.connect({
       ip: CONTAINER_IP, // FFmpeg container IP
@@ -68,7 +69,7 @@ export async function sendStream(roomId: string) {
       console.log(`🔗 Transport1 Tuple Updated:`, tuple);
     });
 
-    const videoPort2 = plainTransport2.tuple.localPort;
+    const videoPort2 = 40752;
 
     console.log(
       "Port1: " +
