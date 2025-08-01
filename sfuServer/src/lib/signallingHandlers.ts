@@ -28,6 +28,16 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
       socket.close();
       return;
     }
+    const peer = peers.get(socket.userId);
+    if (!peer) {
+      console.error(`Peer not found for user ${socket.userId}`);
+      socket.close();
+      return;
+    }
+
+    if(peer.sendTransport) peer.sendTransport.close()
+    if(peer.receiveTransport) peer.receiveTransport.close();
+
     const sendTransport = await router.createWebRtcTransport(
       config.mediasoup.webRtcTransportOptions
     );
@@ -49,12 +59,7 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
       }
     });
 
-    const peer = peers.get(socket.userId);
-    if (!peer) {
-      console.error(`Peer not found for user ${socket.userId}`);
-      socket.close();
-      return;
-    }
+
     peer.sendTransport = sendTransport;
     peer.receiveTransport = receiveTransport;
 
@@ -165,7 +170,6 @@ export async function handleConsume(
   socket: WebSocketWithUserId,
   {  rtpCapabilities, roomId }: any
 ) {
-  console.log(rtpCapabilities)
   if (!socket.userId) {
     console.error("Socket userId is not set ");
     socket.close();
@@ -219,7 +223,7 @@ export async function handleConsume(
     const consumer = await consumerPeer.receiveTransport.consume({
       producerId: producerPeer.producer.id,
       rtpCapabilities,
-      paused: true, // Start paused, client will resume
+      paused: true,
     });
 
     consumerPeer.consumer = consumer;
@@ -229,12 +233,10 @@ export async function handleConsume(
       // consumerPeer.consumers.delete(consumer.id);
     });
 
-    // consumer.on("producerclose", () => {
-    //   console.log(`Producer for consumer closed ${consumer.id}`);
-    //   // You might want to notify the client that this stream has ended
-    //   send(ws, "consumer-closed", { consumerId: consumer.id });
-    //   consumerPeer.consumers.delete(consumer.id);
-    // });
+    consumer.on("producerclose", () => {
+      console.log(`Producer for consumer closed ${consumer.id}`);
+  
+    });
 
     send(socket, "consumed", {
       id: consumer.id,
