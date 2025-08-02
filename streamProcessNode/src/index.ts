@@ -84,8 +84,8 @@ app.post("/api/start", async (req: Request, res: Response) => {
 
     console.log(portMappings);
 
-    monitorUdpPort(streams[0].videoPort);
-    monitorUdpPort(streams[1].videoPort);
+    // monitorUdpPort(streams[0].videoPort);
+    // monitorUdpPort(streams[1].videoPort);
 
     // Simplified Docker command focusing on the core issue
     const dockerCmd =
