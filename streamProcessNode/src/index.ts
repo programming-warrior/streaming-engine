@@ -14,21 +14,6 @@ app.use(express.json());
 const port1 = 42409;
 const port2 = 40752;
 
-// function createRtpLogger(port:number) {
-//   const socket = dgram.createSocket('udp4');
-//   socket.on('message', (msg, rinfo) => {
-//     console.log(`[Port ${port}] RTP Packet from ${rinfo.address}:${rinfo.port}, size: ${msg.length}`);
-//   });
-//   socket.on('listening', () => {
-//   const address = socket.address();
-//   console.log(`UDP Server listening on ${address.address}:${address.port}`);
-// });
-//   socket.bind(port);
-// }
-
-// createRtpLogger(port1)
-// createRtpLogger(port2)
-
 const CONTAINER_IP = "172.25.0.10";
 
 async function createSdpFile(
@@ -36,20 +21,31 @@ async function createSdpFile(
   streamInfo: any,
   outputPath: string
 ) {
-  // Enhanced SDP with proper video parameters
+  // VP8-optimized SDP with better RTP parameters
   const sdpContent = `v=0
 o=- 0 0 IN IP4 ${process.env.BIND_IP}
 s=Mediasoup-Broadcast
 c=IN IP4 ${process.env.BIND_IP}
 t=0 0
+a=tool:ffmpeg
 m=video ${streamInfo[0].videoPort} RTP/AVP ${streamInfo[0].videoPayloadType}
-a=rtpmap:${streamInfo[0].videoPayloadType} ${streamInfo[0].videoCodec}/90000
+c=IN IP4 ${process.env.BIND_IP}
+a=rtpmap:${streamInfo[0].videoPayloadType} VP8/90000
 a=framerate:30
-a=fmtp:${streamInfo[0].videoPayloadType} max-fr=30;max-fs=8160
+a=fmtp:${streamInfo[0].videoPayloadType} max-fr=30;max-fs=8160;picture-id=15
+a=recvonly
+a=rtcp-fb:${streamInfo[0].videoPayloadType} nack
+a=rtcp-fb:${streamInfo[0].videoPayloadType} nack pli
+a=rtcp-fb:${streamInfo[0].videoPayloadType} ccm fir
 m=video ${streamInfo[1].videoPort} RTP/AVP ${streamInfo[1].videoPayloadType}
-a=rtpmap:${streamInfo[1].videoPayloadType} ${streamInfo[1].videoCodec}/90000
+c=IN IP4 ${process.env.BIND_IP}
+a=rtpmap:${streamInfo[1].videoPayloadType} VP8/90000
 a=framerate:30
-a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
+a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160;picture-id=15
+a=recvonly
+a=rtcp-fb:${streamInfo[1].videoPayloadType} nack
+a=rtcp-fb:${streamInfo[1].videoPayloadType} nack pli
+a=rtcp-fb:${streamInfo[1].videoPayloadType} ccm fir`;
 
   try {
     const fullOutputPath = path.join(__dirname, outputPath);
@@ -88,26 +84,37 @@ app.post("/api/start", async (req: Request, res: Response) => {
 
     console.log(portMappings);
 
-    // Add network configuration for better container connectivity
+    monitorUdpPort(streams[0].videoPort);
+    monitorUdpPort(streams[1].videoPort);
+
+    // Simplified Docker command focusing on the core issue
     const dockerCmd =
       `sudo docker run --rm ${portMappings} ` +
+      `--ulimit nofile=65536:65536 ` + // Increase file descriptor limits
       `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
       `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
       `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
       `-e AWS_REGION=${process.env.AWS_REGION} ` +
       `-v "${fullSdpPath}":/app/stream.sdp ` +
+      `--name streaming-container-${roomId} ` +
       `${process.env.FFMPEG_DOCKERIMAGE_URL}`;
 
     console.log("Executing Docker command:", dockerCmd);
 
-    const dockerProcess = exec(dockerCmd, (error, stdout, stderr) => {
-      if (error) {
-        console.error("Error:", error.message);
-        console.error("Signal:", error.signal);
+    const dockerProcess = exec(
+      dockerCmd,
+      {
+        maxBuffer: 1024 * 1024 * 10, // 10MB buffer for logs
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error("Error:", error.message);
+          console.error("Signal:", error.signal);
+        }
+        console.log("STDOUT:", stdout);
+        console.log("STDERR:", stderr);
       }
-      console.log("STDOUT:", stdout);
-      console.log("STDERR:", stderr);
-    });
+    );
 
     let stdout = "";
     let stderr = "";
@@ -125,18 +132,8 @@ app.post("/api/start", async (req: Request, res: Response) => {
     dockerProcess.on("close", (code) => {
       if (code === 0) {
         console.log("Docker process completed successfully");
-        // res.status(201).json({
-        //   message: "success",
-        //   roomId,
-        // });
       } else {
         console.error(`Docker process exited with code ${code}`);
-        // res.status(500).json({
-        //   error: "Docker process failed",
-        //   code,
-        //   details: stderr,
-        //   stdout: stdout
-        // });
       }
     });
 
@@ -161,3 +158,33 @@ const PORT = 4002;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Optional: Add UDP socket monitoring for debugging
+function monitorUdpPort(port: number) {
+  const socket = dgram.createSocket("udp4");
+
+  socket.on("message", (msg, rinfo) => {
+    console.log(
+      `[Port ${port}] RTP Packet from ${rinfo.address}:${rinfo.port}, size: ${msg.length}`
+    );
+  });
+
+  socket.on("listening", () => {
+    const address = socket.address();
+    console.log(`UDP Monitor listening on ${address.address}:${address.port}`);
+  });
+
+  socket.on("error", (err) => {
+    console.error(`UDP Monitor error on port ${port}:`, err);
+  });
+
+  try {
+    socket.bind(port);
+  } catch (error) {
+    console.error(`Failed to bind UDP monitor to port ${port}:`, error);
+  }
+
+  return socket;
+}
+
+// Uncomment to enable UDP monitoring
