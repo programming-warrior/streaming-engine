@@ -10,11 +10,9 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-
 // Port1: 42409 Port2: 40752
-const port1= 42409
-const port2= 40752
-
+const port1 = 42409;
+const port2 = 40752;
 
 // function createRtpLogger(port:number) {
 //   const socket = dgram.createSocket('udp4');
@@ -28,12 +26,10 @@ const port2= 40752
 //   socket.bind(port);
 // }
 
-
 // createRtpLogger(port1)
 // createRtpLogger(port2)
 
 const CONTAINER_IP = "172.25.0.10";
-
 
 async function createSdpFile(
   containerIp: string,
@@ -41,7 +37,7 @@ async function createSdpFile(
   outputPath: string
 ) {
   // Enhanced SDP with proper video parameters
- const sdpContent = `v=0
+  const sdpContent = `v=0
 o=- 0 0 IN IP4 ${process.env.BIND_IP}
 s=Mediasoup-Broadcast
 c=IN IP4 ${process.env.BIND_IP}
@@ -57,11 +53,11 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 
   try {
     const fullOutputPath = path.join(__dirname, outputPath);
-    
+
     if (!fs.existsSync(path.dirname(fullOutputPath))) {
       fs.mkdirSync(path.dirname(fullOutputPath), { recursive: true });
     }
-    
+
     fs.writeFileSync(fullOutputPath, sdpContent);
     console.log(`SDP file created at: ${outputPath}`);
     return fullOutputPath;
@@ -71,89 +67,92 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
   }
 }
 
-
 app.post("/api/start", async (req: Request, res: Response) => {
   const { listenIp, streams, outputDir, roomId } = req.body;
-  
-  if ( !streams || !roomId) {
+
+  if (!streams || !roomId) {
     return res.status(400).json({ error: "Invalid parameters" });
   }
 
   try {
     // Extract ports for verification
     const ports = streams.map((stream: any) => stream.videoPort);
-    
+
     console.log(" Creating SDP file...");
     const outputPath = path.join("tmp", `stream-${roomId}.sdp`);
     const fullSdpPath = await createSdpFile(CONTAINER_IP, streams, outputPath);
-    
+
     const portMappings = streams
       .map((stream: any) => `-p ${stream.videoPort}:${stream.videoPort}/udp`)
       .join(" ");
-    
-    
+
     console.log(portMappings);
 
     // Add network configuration for better container connectivity
-  const dockerCmd = `sudo docker run --rm ${portMappings} ` +
-    `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
-    `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
-    `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
-    `-e AWS_REGION=${process.env.AWS_REGION} ` +
-    `-v "${fullSdpPath}":/app/stream.sdp ` +
-    `${process.env.FFMPEG_DOCKERIMAGE_URL}`;
-    
+    const dockerCmd =
+      `sudo docker run --rm ${portMappings} ` +
+      `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
+      `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
+      `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
+      `-e AWS_REGION=${process.env.AWS_REGION} ` +
+      `-v "${fullSdpPath}":/app/stream.sdp ` +
+      `${process.env.FFMPEG_DOCKERIMAGE_URL}`;
+
     console.log("Executing Docker command:", dockerCmd);
-    
-    const dockerProcess = exec(dockerCmd, {
-      timeout: 60000, // Increased timeout
+
+    const dockerProcess = exec(dockerCmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error("Error:", error.message);
+        console.error("Signal:", error.signal);
+      }
+      console.log("STDOUT:", stdout);
+      console.log("STDERR:", stderr);
     });
-    
-    let stdout = '';
-    let stderr = '';
-    
-    dockerProcess.stdout?.on('data', (data) => {
+
+    let stdout = "";
+    let stderr = "";
+
+    dockerProcess.stdout?.on("data", (data) => {
       stdout += data;
-      console.log('Docker stdout:', data.toString());
+      console.log("Docker stdout:", data.toString());
     });
-    
-    dockerProcess.stderr?.on('data', (data) => {
+
+    dockerProcess.stderr?.on("data", (data) => {
       stderr += data;
-      console.log('Docker stderr:', data.toString());
+      console.log("Docker stderr:", data.toString());
     });
-    
-    dockerProcess.on('close', (code) => {
+
+    dockerProcess.on("close", (code) => {
       if (code === 0) {
-        console.log('Docker process completed successfully');
-        // res.status(201).json({ 
-        //   message: "success", 
+        console.log("Docker process completed successfully");
+        // res.status(201).json({
+        //   message: "success",
         //   roomId,
         // });
       } else {
         console.error(`Docker process exited with code ${code}`);
-        // res.status(500).json({ 
-        //   error: "Docker process failed", 
+        // res.status(500).json({
+        //   error: "Docker process failed",
         //   code,
         //   details: stderr,
         //   stdout: stdout
         // });
       }
     });
-    
-    dockerProcess.on('error', (error) => {
-      console.error('Docker execution error:', error);
-      res.status(500).json({ 
-        error: "Failed to start Docker container", 
-        details: error.message 
+
+    dockerProcess.on("error", (error) => {
+      console.error("Docker execution error:", error);
+      res.status(500).json({
+        error: "Failed to start Docker container",
+        details: error.message,
       });
     });
 
     return res.status(202).json({
-      message:"Container started"
-    })
-    
+      message: "Container started",
+    });
   } catch (e: any) {
-    console.error('Server error:', e);
+    console.error("Server error:", e);
     return res.status(500).json({ error: e.message });
   }
 });
