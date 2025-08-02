@@ -27,25 +27,14 @@ o=- 0 0 IN IP4 ${process.env.BIND_IP}
 s=Mediasoup-Broadcast
 c=IN IP4 ${process.env.BIND_IP}
 t=0 0
-a=tool:ffmpeg
 m=video ${streamInfo[0].videoPort} RTP/AVP ${streamInfo[0].videoPayloadType}
-c=IN IP4 ${process.env.BIND_IP}
 a=rtpmap:${streamInfo[0].videoPayloadType} VP8/90000
 a=framerate:30
-a=fmtp:${streamInfo[0].videoPayloadType} max-fr=30;max-fs=8160;picture-id=15
-a=recvonly
-a=rtcp-fb:${streamInfo[0].videoPayloadType} nack
-a=rtcp-fb:${streamInfo[0].videoPayloadType} nack pli
-a=rtcp-fb:${streamInfo[0].videoPayloadType} ccm fir
+a=fmtp:${streamInfo[0].videoPayloadType} max-fr=30;max-fs=8160
 m=video ${streamInfo[1].videoPort} RTP/AVP ${streamInfo[1].videoPayloadType}
-c=IN IP4 ${process.env.BIND_IP}
 a=rtpmap:${streamInfo[1].videoPayloadType} VP8/90000
 a=framerate:30
-a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160;picture-id=15
-a=recvonly
-a=rtcp-fb:${streamInfo[1].videoPayloadType} nack
-a=rtcp-fb:${streamInfo[1].videoPayloadType} nack pli
-a=rtcp-fb:${streamInfo[1].videoPayloadType} ccm fir`;
+a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 
   try {
     const fullOutputPath = path.join(__dirname, outputPath);
