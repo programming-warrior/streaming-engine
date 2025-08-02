@@ -7,7 +7,7 @@
 set -e
 
 SDP_FILE="stream.sdp"
-TEMP_DIR="/tmp/hls_output"
+TEMP_DIR="/app/hls_output"
 S3_BUCKET="${S3_BUCKET}"
 S3_PREFIX="${S3_PREFIX:-live-stream}"
 AWS_REGION="${AWS_REGION}"
@@ -52,9 +52,17 @@ echo "--------------------------------"
 # --- Create temporary directory ---
 mkdir -p "$TEMP_DIR"
 
+if [ -d "$TEMP_DIR" ]; then
+    echo "✅ Temporary directory created successfully: $TEMP_DIR"
+else
+    echo "❌ Failed to create temporary directory at $TEMP_DIR"
+    exit 1
+fi
+
 # --- Background S3 Upload Process ---
 echo "--- Starting S3 Upload Monitor ---"
 upload_to_s3() {
+    echo ls "$TEMP_DIR"
     while true; do
         # Upload .ts files
         for file in "$TEMP_DIR"/*.ts; do
