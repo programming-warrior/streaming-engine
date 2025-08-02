@@ -157,6 +157,7 @@ ffmpeg \
 -fflags +flush_packets \
 -flush_packets 1 \
 -protocol_whitelist file,udp,rtp \
+-max_delay 500000 \  
 -analyzeduration 5M \
 -probesize 5M \
 -avoid_negative_ts make_zero \

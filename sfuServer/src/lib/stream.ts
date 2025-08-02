@@ -110,19 +110,19 @@ export async function sendStream(roomId: string) {
       console.log("Trace:", trace);
     });
 
-    const verificationInterval = setInterval(async () => {
-      try {
-        const stats1 = await consumer1.getStats();
-        const stats2 = await consumer2.getStats();
+    // const verificationInterval = setInterval(async () => {
+    //   try {
+    //     const stats1 = await consumer1.getStats();
+    //     const stats2 = await consumer2.getStats();
 
-        console.log(stats1);
-        console.log(stats2);
+    //     console.log(stats1);
+    //     console.log(stats2);
 
-      } catch (e) {
-        console.error("Error getting consumer stats:", e);
-        clearInterval(verificationInterval);
-      }
-    }, 10000);
+    //   } catch (e) {
+    //     console.error("Error getting consumer stats:", e);
+    //     clearInterval(verificationInterval);
+    //   }
+    // }, 10000);
 
     consumer1.on("trace", (trace) => {
       if (trace.type === "rtp") {
