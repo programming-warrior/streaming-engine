@@ -41,7 +41,7 @@ export async function sendStream(roomId: string) {
     });
 
 
-    const videoPort1 = 42409; //TODO: find a better approach
+    const videoPort1 = plainTransport1.tuple.localPort; 
 
     await plainTransport1.connect({
       ip: CONTAINER_IP, // FFmpeg container IP
@@ -49,11 +49,13 @@ export async function sendStream(roomId: string) {
       rtcpPort: videoPort1 + 1,
     });
 
+
     const consumer1 = await plainTransport1.consume({
       producerId: producer1.id,
       rtpCapabilities: router.rtpCapabilities,
       paused: false,
     });
+
 
     const videoCodec1 =
       consumer1.rtpParameters.codecs[0].mimeType.split("/")[1];
@@ -65,11 +67,13 @@ export async function sendStream(roomId: string) {
       comedia: false,
     });
 
+  
+
     plainTransport2.on("tuple", (tuple) => {
       console.log(`🔗 Transport1 Tuple Updated:`, tuple);
     });
 
-    const videoPort2 = 40752;
+    const videoPort2 = plainTransport2.tuple.localPort;
 
     console.log(
       "Port1: " +
@@ -99,6 +103,7 @@ export async function sendStream(roomId: string) {
       // RTP/RTCP packet info
       console.log("Trace:", trace);
     });
+
 
     plainTransport2.on("trace", (trace) => {
       // RTP/RTCP packet info

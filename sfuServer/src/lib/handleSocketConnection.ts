@@ -6,7 +6,7 @@ import {
   handleConnectWebRtcTransport,
   handleCreateWebRtcTransport,
   handleProduce,
-  handleConsume
+  handleConsume,
 } from "./signallingHandlers";
 import { WebSocketMessageType } from "./types";
 import { peers } from "./global";
@@ -21,14 +21,26 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
   const userId = randomUUID();
   console.log(`New WebSocket connection from user ${userId}`);
   socket.userId = userId;
-  peers.set(userId, { socket, sendTransport: null, receiveTransport: null, producer: null });
+  peers.set(userId, {
+    socket,
+    sendTransport: null,
+    receiveTransport: null,
+    producer: null,
+  });
 
   send(socket, "welcome", { userId });
-  
-  socket.on("close", async() => {
+
+  socket.on("close", async () => {
+    const peer= peers.get(userId);
+    if (peer?.sendTransport && !peer.sendTransport.closed) {
+       peer.sendTransport.close();
+    }
+    if(peer?.receiveTransport && !peer.receiveTransport.closed){
+       peer.receiveTransport.close();
+    }
     peers.delete(userId);
     console.log(`Socket connection closed for user: ${userId}`);
-    RedisSingleton.removeUserFromtheQueeu(userId).catch((e)=>{})
+    RedisSingleton.removeUserFromtheQueeu(userId).catch((e) => {});
   });
 
   socket.on("message", async (message: WebSocketMessageType) => {
@@ -54,7 +66,7 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
         await handleProduce(socket, payload);
         break;
 
-      case "consume": 
+      case "consume":
         await handleConsume(socket, payload);
         break;
 
@@ -66,5 +78,4 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
   socket.on("error", (error) => {
     console.error(`Socket error for user ${userId}:`, error);
   });
-
 };
