@@ -189,7 +189,6 @@ ffmpeg \
 -probesize 1000000 \
 -max_delay 1000000 \
 -buffer_size 212992 \
--fifo_size 1000000 \
 -rtsp_transport udp \
 -avoid_negative_ts make_zero \
 -use_wallclock_as_timestamps 1 \
