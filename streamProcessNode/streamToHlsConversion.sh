@@ -62,7 +62,15 @@ fi
 
 # --- Test UDP ports are receiving data ---
 echo "--- Testing UDP port connectivity ---"
-timeout 5s tcpdump -c 10 -i any port 44571 or port 49871 2>/dev/null || echo "No immediate UDP traffic detected (this is normal if streams haven't started)"
+if [ ${#PORT_ARRAY[@]} -gt 0 ]; then
+    PORT_LIST=$(printf "port %s or " "${PORT_ARRAY[@]}")
+    PORT_LIST=${PORT_LIST% or }  # Remove trailing " or "
+    echo "Testing ports: $PORT_LIST"
+    timeout 5s tcpdump -c 10 -i any $PORT_LIST 2>/dev/null || echo "No immediate UDP traffic detected (this is normal if streams haven't started)"
+else
+    echo "❌ No valid ports found in SDP file"
+    exit 1
+fi
 
 # --- Background S3 Upload Process ---
 echo "--- Starting S3 Upload Monitor ---"
@@ -142,16 +150,29 @@ cleanup() {
 # Set up trap for cleanup on exit
 trap cleanup EXIT INT TERM
 
+# --- Extract ports from SDP file ---
+echo "--- Extracting ports from SDP file ---"
+PORTS=$(grep "^m=video" "$SDP_FILE" | awk '{print $2}' | tr '\n' ' ')
+echo "Detected RTP ports from SDP: $PORTS"
+
+# Convert to array for easier handling
+PORT_ARRAY=($PORTS)
+echo "Port array: ${PORT_ARRAY[@]}"
+
 # --- Pre-flight check ---
 echo "--- Starting pre-flight check ---"
 echo "Checking if UDP ports are accessible..."
 
 # Create a simple test to see if we can bind to the ports (they should be busy if RTP is coming in)
-for port in 44571 49871; do
-    if nc -l -u -p $port -w 1 < /dev/null 2>/dev/null; then
-        echo "⚠️  Port $port appears to be free (no RTP data incoming)"
+for port in "${PORT_ARRAY[@]}"; do
+    if [ -n "$port" ] && [ "$port" -gt 0 ] 2>/dev/null; then
+        if nc -l -u -p $port -w 1 < /dev/null 2>/dev/null; then
+            echo "⚠️  Port $port appears to be free (no RTP data incoming)"
+        else
+            echo "✅ Port $port appears to be in use (likely receiving RTP data)"
+        fi
     else
-        echo "✅ Port $port appears to be in use (likely receiving RTP data)"
+        echo "❌ Invalid port detected: '$port'"
     fi
 done
 
