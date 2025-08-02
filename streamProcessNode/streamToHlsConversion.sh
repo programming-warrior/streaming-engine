@@ -61,9 +61,9 @@ if [ ! -w "$TEMP_DIR" ]; then
 fi
 
 # --- Test UDP ports are receiving data ---
-echo "--- Testing UDP port connectivity ---"
-echo "Testing ports with tcpdump: port $PORT1 or port $PORT2"
-timeout 5s tcpdump -c 10 -i any port $PORT1 or port $PORT2 2>/dev/null || echo "No immediate UDP traffic detected (this is normal if streams haven't started)"
+# echo "--- Testing UDP port connectivity ---"
+# echo "Testing ports with tcpdump: port $PORT1 or port $PORT2"
+# timeout 5s tcpdump -c 10 -i any port $PORT1 or port $PORT2 2>/dev/null || echo "No immediate UDP traffic detected (this is normal if streams haven't started)"
 
 # --- Background S3 Upload Process ---
 echo "--- Starting S3 Upload Monitor ---"
@@ -144,13 +144,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # --- Get ports from environment variables ---
-echo "--- Checking RTP ports from environment ---"
-if [ -z "$PORT1" ] || [ -z "$PORT2" ]; then
-    echo "❌ Error: PORT1 and PORT2 environment variables are required"
-    echo "PORT1: ${PORT1:-'not set'}"
-    echo "PORT2: ${PORT2:-'not set'}"
-    exit 1
-fi
+# echo "--- Checking RTP ports from environment ---"
+# if [ -z "$PORT1" ] || [ -z "$PORT2" ]; then
+#     echo "❌ Error: PORT1 and PORT2 environment variables are required"
+#     echo "PORT1: ${PORT1:-'not set'}"
+#     echo "PORT2: ${PORT2:-'not set'}"
+#     exit 1
+# fi
 
 
 echo "✅ RTP Ports configured:"
@@ -160,18 +160,18 @@ echo "   PORT2: $PORT2"
 VALID_PORTS=("$PORT1" "$PORT2")
 
 # --- Pre-flight check ---
-echo "--- Starting pre-flight check ---"
-echo "Checking if UDP ports are accessible..."
+# echo "--- Starting pre-flight check ---"
+# echo "Checking if UDP ports are accessible..."
 
 # Create a simple test to see if we can bind to the ports (they should be busy if RTP is coming in)
-for port in "${VALID_PORTS[@]}"; do
-    echo "Testing port $port..."
-    if timeout 2s nc -l -u -p "$port" -w 1 < /dev/null 2>/dev/null; then
-        echo "⚠️  Port $port appears to be free (no RTP data incoming)"
-    else
-        echo "✅ Port $port appears to be in use (likely receiving RTP data)"
-    fi
-done
+# for port in "${VALID_PORTS[@]}"; do
+#     echo "Testing port $port..."
+#     if timeout 2s nc -l -u -p "$port" -w 1 < /dev/null 2>/dev/null; then
+#         echo "⚠️  Port $port appears to be free (no RTP data incoming)"
+#     else
+#         echo "✅ Port $port appears to be in use (likely receiving RTP data)"
+#     fi
+# done
 
 # --- Main FFMPEG Command with VP8 optimizations ---
 echo "--- Starting FFMPEG for Real-time HLS to S3 ---"
