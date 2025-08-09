@@ -20,6 +20,7 @@ export const config = {
       rtcMinPort: 40000,
       rtcMaxPort: 49999,
     },
+
     // Mediasoup Router settings.
     routerOptions: {
       mediaCodecs: [
@@ -54,13 +55,21 @@ export const config = {
       listenIps: [
         {
           ip: process.env.LOCAL_BIND_IP || "127.0.0.1",
-          announcedIp: process.env.ANNOUNCED_IP || ""
+          announcedIp: process.env.ANNOUNCED_IP || "",
         },
-      ], 
+      ],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
-      
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        // Optional TURN server for NAT traversal
+        // {
+        //   urls: 'turn:turn.myserver.com:3478',
+        //   username: 'user',
+        //   credential: 'pass'
+        // }
+      ],
     } as mediasoup.types.WebRtcTransportOptions, // Fix type
   },
 };
