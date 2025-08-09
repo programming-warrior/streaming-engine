@@ -61,7 +61,6 @@ export default function StreamPage() {
     };
   }, []);
 
-
   //   useEffect(()=>{
   //     localStorage.setItem("userId", userId || "");
   //   },[userId])
@@ -110,7 +109,7 @@ export default function StreamPage() {
   const handlePeerMatched = (data: any, socket: WebSocket) => {
     console.log("Peer matched:", data);
     const { roomId } = data;
-    roomIdRef.current= roomId
+    roomIdRef.current = roomId;
     const device = deviceRef.current;
     if (!device) {
       console.error("Device not initialized");
@@ -157,9 +156,15 @@ export default function StreamPage() {
       return;
     }
 
-    const sendTransport = device.createSendTransport(params.sendTransport);
+    const sendTransport = device.createSendTransport({
+      ...params.sendTransport,
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
     const receiveTransport = device.createRecvTransport(
-      params.receiveTransport
+     {
+      ... params.receiveTransport,
+      iceServers:  [{ urls: "stun:stun.l.google.com:19302" }]
+     }
     );
 
     sendTransportRef.current = sendTransport;
