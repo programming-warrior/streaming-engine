@@ -10,14 +10,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// Port1: 42409 Port2: 40752
-const port1 = 42409;
-const port2 = 40752;
-
-const CONTAINER_IP = "172.25.0.10";
-
 async function createSdpFile(
-  containerIp: string,
   streamInfo: any,
   outputPath: string
 ) {
@@ -53,33 +46,31 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 }
 
 app.post("/api/start", async (req: Request, res: Response) => {
-  const { listenIp, streams, outputDir, roomId } = req.body;
+  const {  streams,  roomId } = req.body;
 
   if (!streams || !roomId) {
     return res.status(400).json({ error: "Invalid parameters" });
   }
 
   try {
-    // Extract ports for verification
-    const ports = streams.map((stream: any) => stream.videoPort);
 
     console.log(" Creating SDP file...");
-    const outputPath = path.join("tmp", `stream-${roomId}.sdp`);
-    const fullSdpPath = await createSdpFile(CONTAINER_IP, streams, outputPath);
-
+    const sdpFilePath = path.join("tmp", `stream-${roomId}.sdp`);
+    const fullSdpPath = await createSdpFile( streams, sdpFilePath);
+    const outputPath = path.join(__dirname,"output")
     const portMappings = streams
       .map((stream: any) => `-p ${stream.videoPort}:${stream.videoPort}/udp`)
       .join(" ");
 
     console.log(portMappings);
+    console.log("outpath: ", outputPath)
 
     // monitorUdpPort(streams[0].videoPort);
     // monitorUdpPort(streams[1].videoPort);
 
     // Simplified Docker command focusing on the core issue
     const dockerCmd =
-      `sudo docker run --rm ${portMappings} ` +
-      `--ulimit nofile=65536:65536 ` + // Increase file descriptor limits
+      `docker run --rm ${portMappings} ` +
       `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
       `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
       `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
@@ -87,6 +78,7 @@ app.post("/api/start", async (req: Request, res: Response) => {
       `-e PORT2=${streams[1].videoPort} ` +
       `-e AWS_REGION=${process.env.AWS_REGION} ` +
       `-v "${fullSdpPath}":/app/stream.sdp ` +
+      `-v "${outputPath}":/output ` +
       `--name streaming-container-${roomId} ` +
       `${process.env.FFMPEG_DOCKERIMAGE_URL}`;
 

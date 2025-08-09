@@ -36,12 +36,9 @@ export async function sendStream(roomId: string) {
       comedia: false,
     });
 
-    plainTransport1.on("tuple", (tuple) => {
-      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
-    });
 
-
-    const videoPort1 = plainTransport1.tuple.localPort; 
+    // const videoPort1 = plainTransport1.tuple.localPort; 
+    const videoPort1= 40752
 
     await plainTransport1.connect({
       ip: CONTAINER_IP, // FFmpeg container IP
@@ -53,7 +50,7 @@ export async function sendStream(roomId: string) {
     const consumer1 = await plainTransport1.consume({
       producerId: producer1.id,
       rtpCapabilities: router.rtpCapabilities,
-      paused: false,
+      paused: false
     });
 
 
@@ -66,15 +63,8 @@ export async function sendStream(roomId: string) {
       rtcpMux: false,
       comedia: false,
     });
-
-  
-
-    plainTransport2.on("tuple", (tuple) => {
-      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
-    });
-
-    const videoPort2 = plainTransport2.tuple.localPort;
-
+    // const videoPort2 = plainTransport2.tuple.localPort;
+    const videoPort2= 42409
     console.log(
       "Port1: " +
         plainTransport1.tuple.localPort +
@@ -98,12 +88,19 @@ export async function sendStream(roomId: string) {
       consumer2.rtpParameters.codecs[0].mimeType.split("/")[1];
     const videoPayloadType2 = consumer2.rtpParameters.codecs[0].payloadType;
 
+    console.log("videoPayloadType1: "+ videoPayloadType1 + " videoPayloadType2: " + videoPayloadType2);
+  
+    plainTransport1.on("tuple", (tuple) => {
+      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
+    });
+    plainTransport2.on("tuple", (tuple) => {
+      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
+    });
 
     plainTransport1.on("trace", (trace) => {
       // RTP/RTCP packet info
       console.log("Trace:", trace);
     });
-
 
     plainTransport2.on("trace", (trace) => {
       // RTP/RTCP packet info
@@ -125,15 +122,11 @@ export async function sendStream(roomId: string) {
     // }, 10000);
 
     consumer1.on("trace", (trace) => {
-      if (trace.type === "rtp") {
         console.log("Consumer1 RTP Packet Received:", trace);
-      }
     });
 
     consumer2.on("trace", (trace) => {
-      if (trace.type === "rtp") {
         console.log("Consumer2 RTP Packet Received:", trace);
-      }
     });
 
     //send an api request to the worker node
@@ -158,6 +151,7 @@ export async function sendStream(roomId: string) {
       roomId: roomId,
     });
   } catch (e: any) {
+    console.log("inside the catch of try");
     console.error("sendStreamError: " + e.message);
   }
 }

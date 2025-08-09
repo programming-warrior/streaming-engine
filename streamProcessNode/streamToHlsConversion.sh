@@ -8,9 +8,9 @@ set -e
 
 SDP_FILE="stream.sdp"
 TEMP_DIR="/tmp/hls_output"
-
+S3_BUCKET="${S3_BUCKET}"
 S3_PREFIX="${S3_PREFIX:-live-stream}"
-
+AWS_REGION="${AWS_REGION}"
 
 # --- Environment Variables Check ---
 echo "--- Checking Environment Variables ---"

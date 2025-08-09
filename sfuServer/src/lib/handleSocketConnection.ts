@@ -7,6 +7,7 @@ import {
   handleCreateWebRtcTransport,
   handleProduce,
   handleConsume,
+  handleConsumerResume,
 } from "./signallingHandlers";
 import { WebSocketMessageType } from "./types";
 import { peers } from "./global";
@@ -69,7 +70,10 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
       case "consume":
         await handleConsume(socket, payload);
         break;
-
+      
+      case "resume": 
+        await handleConsumerResume(socket,payload)
+        break;
       default:
         console.warn(`Unknown action: ${event}`);
     }

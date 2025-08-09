@@ -12,3 +12,5 @@ streamProcessNode/.env
 streamProcessNode/src/tmp
 streamProcessNode/tmp
 streamProcessNode/dist
+streamProcessNode/src/test-server.ts
+

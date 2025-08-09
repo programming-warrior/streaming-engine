@@ -12,7 +12,7 @@ export default function StreamPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const receiveVideoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [roomId, setRoomId] = useState<string | null>(null);
+  const roomIdRef = useRef<string | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<Transport | null>(null);
   const receiveTransportRef = useRef<Transport | null>(null);
@@ -61,9 +61,6 @@ export default function StreamPage() {
     };
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("roomId", roomId || "");
-  }, [roomId]);
 
   //   useEffect(()=>{
   //     localStorage.setItem("userId", userId || "");
@@ -73,7 +70,7 @@ export default function StreamPage() {
     console.log("Welcome message received:", data);
     const { userId } = data;
     console.log(`User ID: ${userId}`);
-    // localStorage.setItem("userId", userId);
+    localStorage.setItem("userId", userId);
   };
 
   const handleConsumed = async (data: any) => {
@@ -113,7 +110,7 @@ export default function StreamPage() {
   const handlePeerMatched = (data: any, socket: WebSocket) => {
     console.log("Peer matched:", data);
     const { roomId } = data;
-    setRoomId(roomId);
+    roomIdRef.current= roomId
     const device = deviceRef.current;
     if (!device) {
       console.error("Device not initialized");
@@ -182,6 +179,14 @@ export default function StreamPage() {
           function onReceiveTransportConnected(event) {
             const message = JSON.parse(event.data);
             if (message.event === "webRtcTransportConnected") {
+              socket.send(
+                JSON.stringify({
+                  event: "resume",
+                  payload: { roomId: roomIdRef.current },
+                })
+              );
+            } else if (message.event === "consumer-resumed") {
+              console.log("consumer-resumed event received");
               callback();
               socket.removeEventListener(
                 "message",
@@ -275,8 +280,22 @@ export default function StreamPage() {
         </div>
       </div>
       <div className="mt-8 flex items-center justify-center">
-        {!isStreaming && <button onClick={startStreaming} className="bg-red-600 text-white  rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer">Join</button>}
-        {isStreaming && <button onClick={stopStreaming} className="bg-red-600 text-white rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer">Leave</button>}
+        {!isStreaming && (
+          <button
+            onClick={startStreaming}
+            className="bg-red-600 text-white  rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
+          >
+            Join
+          </button>
+        )}
+        {isStreaming && (
+          <button
+            onClick={stopStreaming}
+            className="bg-red-600 text-white rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
+          >
+            Leave
+          </button>
+        )}
       </div>
     </div>
   );
