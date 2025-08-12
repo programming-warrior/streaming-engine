@@ -5,6 +5,7 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     bash \
+    inotify-tools \
     netcat-openbsd && \
     python3 -m venv /venv && \
     /venv/bin/pip install --upgrade pip && \

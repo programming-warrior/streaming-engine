@@ -1,16 +1,17 @@
 #!/bin/bash
 # This script is designed to be the ENTRYPOINT of a Docker container.
 # It waits for RTP streams defined in stream.sdp, combines them, and creates an HLS stream.
-# HLS segments are uploaded directly to AWS S3.
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
 SDP_FILE="stream.sdp"
-TEMP_DIR="/tmp/hls_output"
+OUTPUT_DIR="/output" # This should be a mounted volume
 S3_BUCKET="${S3_BUCKET}"
-S3_PREFIX="${S3_PREFIX:-live-stream}"
 AWS_REGION="${AWS_REGION}"
+ROOM_ID="1234"
+S3_PREFIX="live-stream/$ROOM_ID"
+
 
 # --- Environment Variables Check ---
 echo "--- Checking Environment Variables ---"
@@ -20,17 +21,19 @@ if [ -z "$S3_BUCKET" ]; then
 fi
 
 echo "S3 Bucket: $S3_BUCKET"
-echo "S3 Prefix: $S3_PREFIX"
 echo "AWS Region: $AWS_REGION"
 
-# --- AWS CLI Check ---
-echo "--- Verifying AWS CLI ---"
 if ! command -v aws &> /dev/null; then
     echo "Error: AWS CLI is not installed"
     exit 1
 fi
 
-# Test AWS credentials
+if ! command -v inotifywait &> /dev/null; then
+    echo "Error: inotify-tools is not installed. Please add it to your Dockerfile."
+    exit 1
+fi
+
+
 if ! aws sts get-caller-identity &> /dev/null; then
     echo "Error: AWS credentials not configured or invalid"
     echo "Make sure to set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and optionally AWS_SESSION_TOKEN"
@@ -49,150 +52,113 @@ echo "SDP file found. Contents:"
 cat "$SDP_FILE"
 echo "--------------------------------"
 
-# --- Create temporary directory ---
-rm -rf "$TEMP_DIR"
-mkdir -p "$TEMP_DIR"
-echo "✅ Temporary directory created successfully: $TEMP_DIR"
+# --- Create output directory if it doesn't exist ---
+mkdir -p "$OUTPUT_DIR"
 
-# Check if directory is writable
-if [ ! -w "$TEMP_DIR" ]; then
-    echo "Error: Cannot write to $TEMP_DIR"
-    exit 1
-fi
 
-# --- Background S3 Upload Process ---
+# --- Background S3 Upload Process (Corrected with inotifywait) ---
 echo "--- Starting S3 Upload Monitor ---"
 upload_to_s3() {
-    while true; do
-        # Upload .ts files
-        for file in "$TEMP_DIR"/*.ts; do
-            if [ -f "$file" ] && [ -s "$file" ]; then  # Check file exists and is not empty
-                filename=$(basename "$file")
-                echo "📤 Uploading $filename to S3 (size: $(stat -c%s "$file") bytes)..."
-                
-                if aws s3 cp "$file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
-                    --region "$AWS_REGION" \
-                    --cache-control "max-age=10" \
-                    --content-type "video/mp2t"; then
-                    echo "✅ Successfully uploaded $filename"
-                    # Remove local file after successful upload
-                    rm "$file"
-                else
-                    echo "❌ Failed to upload $filename"
-                fi
-            fi
-        done
-        
-        # Upload playlist files
-        for playlist in "$TEMP_DIR"/*.m3u8; do
-            if [ -f "$playlist" ] && [ -s "$playlist" ]; then  # Check file exists and is not empty
-                filename=$(basename "$playlist")
-                echo "📤 Uploading playlist $filename to S3 (size: $(stat -c%s "$playlist") bytes)..."
-                
-                if aws s3 cp "$playlist" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
-                    --region "$AWS_REGION" \
-                    --cache-control "max-age=1" \
-                    --content-type "application/vnd.apple.mpegurl"; then
-                    echo "✅ Successfully uploaded playlist $filename"
-                else
-                    echo "❌ Failed to upload playlist $filename"
-                fi
-            fi
-        done
-        
-        # List current files in temp directory for debugging
-        if [ "$(ls -A $TEMP_DIR 2>/dev/null)" ]; then
-            echo "📁 Current files in $TEMP_DIR: $(ls -la $TEMP_DIR)"
+    # Watch the output directory for new files that are created and closed.
+    # The 'close_write' event is a reliable signal that ffmpeg has finished writing the file.
+    inotifywait -m -q -e close_write --format '%w%f' "$OUTPUT_DIR" | while read -r FILE_PATH; do
+        if [ ! -f "$FILE_PATH" ]; then
+            # The file might have been handled by the cleanup trap, so we skip.
+            continue
         fi
-        
-        # Check every 3 seconds
-        sleep 3
+
+        FILENAME=$(basename "$FILE_PATH")
+
+        if [[ "$FILENAME" == *.ts ]]; then
+            echo "Segment ready: $FILENAME. Uploading to S3..."
+            # Upload .ts segment
+            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
+                --region "$AWS_REGION" \
+                --cache-control "max-age=10" \
+                --content-type "video/mp2t"
+            
+            # Remove local file ONLY after successful upload
+            if [ $? -eq 0 ]; then
+                rm "$FILE_PATH"
+                echo "Successfully uploaded and removed $FILENAME"
+            else
+                echo "ERROR: Failed to upload $FILENAME"
+            fi
+        elif [[ "$FILENAME" == *.m3u8 ]]; then
+            echo "Playlist updated: $FILENAME. Uploading to S3..."
+            # Upload .m3u8 playlist
+            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
+                --region "$AWS_REGION" \
+                --cache-control "max-age=1" \
+                --content-type "application/vnd.apple.mpegurl"
+            
+            if [ $? -eq 0 ]; then
+                echo "Successfully uploaded playlist $FILENAME"
+            else
+                echo "ERROR: Failed to upload playlist $FILENAME"
+            fi
+        fi
     done
 }
 
-# Start the upload process in background
 upload_to_s3 &
 UPLOAD_PID=$!
+
 
 # --- Cleanup function ---
 cleanup() {
     echo "--- Cleaning up ---"
+    # Kill the background uploader process
     kill $UPLOAD_PID 2>/dev/null || true
-    
-    # Final upload of any remaining files
-    echo "Final upload of remaining files..."
-    for file in "$TEMP_DIR"/*; do
-        if [ -f "$file" ] && [ -s "$file" ]; then
-            filename=$(basename "$file")
-            echo "📤 Final upload: $filename"
-            aws s3 cp "$file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
-                --region "$AWS_REGION" || true
-        fi
+
+    # Final upload of any remaining files to prevent data loss on exit
+    echo "Performing final upload of any remaining files..."
+    # Using `find` is safer than a glob for the final cleanup
+    find "$OUTPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+        filename=$(basename "$file")
+        echo "Final upload for: $filename"
+        aws s3 cp "$file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
+            --region "$AWS_REGION" || echo "Warning: Final upload for $filename failed."
     done
-    
+
     # Clean up temp directory
-    rm -rf "$TEMP_DIR"
+    echo "Removing local output directory..."
+    rm -rf "$OUTPUT_DIR"
     echo "Cleanup completed"
 }
 
-# Set up trap for cleanup on exit
+
 trap cleanup EXIT INT TERM
 
-
-
-echo "✅ RTP Ports configured:"
-echo "   PORT1: $PORT1"
-echo "   PORT2: $PORT2"
-
-
-# --- Main FFMPEG Command with VP8 optimizations ---
-echo "--- Starting FFMPEG for Real-time HLS to S3 ---"
-echo "Working directory: $(pwd)"
-echo "Temp directory: $TEMP_DIR"
-echo "Temp directory permissions: $(ls -ld $TEMP_DIR)"
-
-# Start FFmpeg with comprehensive logging and VP8-specific optimizations
+# --- Main FFMPEG Command ---
+# This command remains the same as it correctly generates the HLS files.
+echo "--- Starting FFMPEG for Real-time HLS ---"
 ffmpeg \
--loglevel debug \
+-loglevel info \
 -fflags +flush_packets \
 -flush_packets 1 \
 -protocol_whitelist file,udp,rtp \
--max_delay 500000 \
 -analyzeduration 5M \
 -probesize 5M \
 -avoid_negative_ts make_zero \
 -use_wallclock_as_timestamps 1 \
 -i ${SDP_FILE} \
 -filter_complex \
-  "[0:v:0]scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p[v0]; \
-   [0:v:1]scale=640:480:force_original_aspect_ratio=decrease,pad=640:480:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p[v1]; \
-   [v0][v1]hstack=inputs=2,scale=1280:480[vout]" \
+  "[0:v:0]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v0]; \
+   [0:v:1]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v1]; \
+   [v0][v1]hstack=inputs=2[vout]" \
 -map "[vout]" \
 -c:v libx264 \
--preset veryfast \
+-preset ultrafast \
 -tune zerolatency \
 -crf 28 \
 -g 60 \
 -keyint_min 60 \
 -sc_threshold 0 \
 -f hls \
--hls_time 4 \
+-hls_time 2 \
 -hls_list_size 10 \
 -hls_flags append_list+delete_segments+split_by_time \
--hls_segment_filename "${TEMP_DIR}/segment_%03d.ts" \
+-hls_segment_filename "${OUTPUT_DIR}/data%02d.ts" \
 -hls_start_number_source epoch \
--start_number 0 \
-"${TEMP_DIR}/playlist.m3u8" \
-2>&1 | while IFS= read -r line; do
-    echo "[FFmpeg] $line"
-    # Check for specific errors
-    if [[ "$line" == *"No such file or directory"* ]]; then
-        echo "❌ FFmpeg cannot find input file or has permission issues"
-    elif [[ "$line" == *"Keyframe missing"* ]]; then
-        echo "⚠️  VP8 keyframe issue detected"
-    elif [[ "$line" == *"segment"* ]] && [[ "$line" == *".ts"* ]]; then
-        echo "✅ HLS segment created: $line"
-    fi
-done
-
-echo "--- FFMPEG process finished ---"
+"${OUTPUT_DIR}/master.m3u8"
