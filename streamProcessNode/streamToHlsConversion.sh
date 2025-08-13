@@ -56,14 +56,16 @@ echo "--------------------------------"
 mkdir -p "$OUTPUT_DIR"
 
 
-# --- Background S3 Upload Process (Corrected with inotifywait) ---
+# --- Background S3 Upload Process (Corrected with better events and logging) ---
 echo "--- Starting S3 Upload Monitor ---"
 upload_to_s3() {
-    # Watch the output directory for new files that are created and closed.
-    # The 'close_write' event is a reliable signal that ffmpeg has finished writing the file.
-    inotifywait -m -q -e close_write --format '%w%f' "$OUTPUT_DIR" | while read -r FILE_PATH; do
+    echo "Uploader started. Watching for 'close_write' and 'moved_to' events in $OUTPUT_DIR"
+    # CORRECTED: Added 'moved_to' to catch atomic renames of the .m3u8 file.
+    inotifywait -m -q -e close_write,moved_to --format '%w%f' "$OUTPUT_DIR" | while read -r FILE_PATH; do
+        echo "inotify event detected for: $FILE_PATH"
+
         if [ ! -f "$FILE_PATH" ]; then
-            # The file might have been handled by the cleanup trap, so we skip.
+            echo "File $FILE_PATH no longer exists. Skipping."
             continue
         fi
 
@@ -71,13 +73,11 @@ upload_to_s3() {
 
         if [[ "$FILENAME" == *.ts ]]; then
             echo "Segment ready: $FILENAME. Uploading to S3..."
-            # Upload .ts segment
             aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=10" \
                 --content-type "video/mp2t"
             
-            # Remove local file ONLY after successful upload
             if [ $? -eq 0 ]; then
                 rm "$FILE_PATH"
                 echo "Successfully uploaded and removed $FILENAME"
@@ -86,8 +86,7 @@ upload_to_s3() {
             fi
         elif [[ "$FILENAME" == *.m3u8 ]]; then
             echo "Playlist updated: $FILENAME. Uploading to S3..."
-            # Upload .m3u8 playlist
-            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
+            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S_PREFIX/$FILENAME" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=1" \
                 --content-type "application/vnd.apple.mpegurl"
@@ -101,37 +100,30 @@ upload_to_s3() {
     done
 }
 
-upload_to_s3 &
+# CORRECTED: Redirect uploader output to a dedicated log file for easy debugging.
+upload_to_s3 > "${OUTPUT_DIR}/uploader.log" 2>&1 &
 UPLOAD_PID=$!
 
 
 # --- Cleanup function ---
 cleanup() {
     echo "--- Cleaning up ---"
-    # Kill the background uploader process
     kill $UPLOAD_PID 2>/dev/null || true
-
-    # Final upload of any remaining files to prevent data loss on exit
     echo "Performing final upload of any remaining files..."
-    # Using `find` is safer than a glob for the final cleanup
-    find "$OUTPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+    find "$OUTPUT_DIR" -type f ! -name "uploader.log" -print0 | while IFS= read -r -d '' file; do
         filename=$(basename "$file")
         echo "Final upload for: $filename"
         aws s3 cp "$file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
             --region "$AWS_REGION" || echo "Warning: Final upload for $filename failed."
     done
-
-    # Clean up temp directory
     echo "Removing local output directory..."
     rm -rf "$OUTPUT_DIR"
     echo "Cleanup completed"
 }
 
-
 trap cleanup EXIT INT TERM
 
-# --- Main FFMPEG Command ---
-# This command remains the same as it correctly generates the HLS files.
+# --- Main FFMPEG Command (No changes needed here) ---
 echo "--- Starting FFMPEG for Real-time HLS ---"
 ffmpeg \
 -loglevel info \
@@ -159,6 +151,6 @@ ffmpeg \
 -hls_time 2 \
 -hls_list_size 10 \
 -hls_flags append_list+delete_segments+split_by_time \
--hls_segment_filename "${OUTPUT_DIR}/data%02d.ts" \
+-hls_segment_filename "${OUTPUT_DIR}/data%d.ts" \
 -hls_start_number_source epoch \
 "${OUTPUT_DIR}/master.m3u8"
