@@ -86,7 +86,7 @@ upload_to_s3() {
             fi
         elif [[ "$FILENAME" == *.m3u8 ]]; then
             echo "Playlist updated: $FILENAME. Uploading to S3..."
-            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S_PREFIX/$FILENAME" \
+            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=1" \
                 --content-type "application/vnd.apple.mpegurl"
@@ -150,7 +150,7 @@ ffmpeg \
 -f hls \
 -hls_time 2 \
 -hls_list_size 10 \
--hls_flags append_list+delete_segments+split_by_time \
+-hls_flags append_list+split_by_time \
 -hls_segment_filename "${OUTPUT_DIR}/data%d.ts" \
 -hls_start_number_source epoch \
 "${OUTPUT_DIR}/master.m3u8"
