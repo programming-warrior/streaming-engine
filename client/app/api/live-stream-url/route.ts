@@ -17,12 +17,11 @@ export async function GET(req: NextRequest) {
         }
         console.log(keys)
         const randomKey = keys[Math.floor(Math.random() * keys.length)];
-        const url = "https://vehiclevista.s3.ap-south-1.amazonaws.com/live-stream/master.m3u8"
-        console.log(url);
-        if (!url) {
-            return NextResponse.json({ error: "URL not found" }, { status: 404 });
-        }
-        return NextResponse.json({ url });
+        console.log(randomKey);
+        const randomRoomString= await redis.get(randomKey);
+        const randomRoomObject = JSON.parse(randomRoomString as string);
+        console.log(randomRoomObject);
+        return NextResponse.json({ url: randomRoomObject.streamUrl });
     } catch (error) {
         return NextResponse.json(
             { error: "Internal Server Error" },

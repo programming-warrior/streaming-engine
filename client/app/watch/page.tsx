@@ -35,16 +35,13 @@ export default function WatchPage() {
   return (
     <div>
       <h1>Live Stream</h1>
-      {streamUrl ? (
-        <video
-          ref={videoRef}
-          controls
-          autoPlay
-          style={{ width: "100%", maxWidth: 800 }}
-        />
-      ) : (
-        <p>Loading stream...</p>
-      )}
+      <div className="flex items-center justify-center w-full h-screen">
+        {streamUrl ? (
+          <video ref={videoRef} controls autoPlay style={{ width: "100%", maxHeight:"1500px" }} />
+        ) : (
+          <p>Loading stream...</p>
+        )}
+      </div>
     </div>
   );
 }

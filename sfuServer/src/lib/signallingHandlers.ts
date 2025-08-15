@@ -35,8 +35,8 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
       return;
     }
 
-    if (peer.sendTransport) peer.sendTransport.close();
-    if (peer.receiveTransport) peer.receiveTransport.close();
+    // if (peer.sendTransport) peer.sendTransport.close();
+    // if (peer.receiveTransport) peer.receiveTransport.close();
 
     const sendTransport = await router.createWebRtcTransport(
       config.mediasoup.webRtcTransportOptions

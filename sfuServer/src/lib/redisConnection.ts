@@ -95,11 +95,12 @@ export class RedisSingleton {
           return null;
         }
         const roomId = randomUUID();
+        const falseRoomId= "1234"
         const roomData = {
           users: [matchedUserId, userId], //offerer, answerer
           offerer: matchedUserId,
           answerer: userId,
-          streamUrl: "",
+          streamUrl: `https://${process.env.BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/live-stream/${falseRoomId}/master.m3u8`,
         };
 
         //store the streamRoom in redis
