@@ -150,7 +150,7 @@ ffmpeg \
 -f hls \
 -hls_time 2 \
 -hls_list_size 10 \
--hls_flags append_list+delete_segments+split_by_time \
+-hls_flags append_list+split_by_time \
 -hls_segment_filename "${OUTPUT_DIR}/data%d.ts" \
 -hls_start_number_source epoch \
 "${OUTPUT_DIR}/master.m3u8"
