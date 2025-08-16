@@ -56,19 +56,18 @@ echo "--------------------------------"
 mkdir -p "$OUTPUT_DIR"
 
 
-# --- Background S3 Upload Process (Corrected Resilient Polling Method) ---
+# --- Background S3 Upload Process (Corrected Parallel and Resilient) ---
 echo "--- Starting S3 Upload Monitor (Parallel, Resilient Polling) ---"
 upload_to_s3() {
-    # Set the maximum number of parallel uploads.
-    # A value between 4 and 10 is usually a good starting point.
     local MAX_JOBS=8
     echo "[UPLOADER] Resilient uploader started. Polling every 2 seconds with $MAX_JOBS parallel jobs."
     
     while true; do
         # STEP 1: UPLOAD SEGMENTS FIRST (IN PARALLEL)
-        # We find all .ts files and process them.
         local job_count=0
-        find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*.ts" -print0 | while IFS= read -r -d '' ts_file; do
+        
+        # THE FIX: Use Process Substitution '< <()' to avoid a subshell deadlock.
+        while IFS= read -r -d '' ts_file; do
             # This entire block is run in a background subshell
             (
                 if [ -f "$ts_file" ]; then
@@ -89,13 +88,12 @@ upload_to_s3() {
                 fi
             ) & # The '&' sends the subshell to the background
 
-            # Increment job counter and wait if we've hit the max
             job_count=$((job_count + 1))
             if [ "$job_count" -ge "$MAX_JOBS" ]; then
                 wait -n # Wait for any single background job to finish
                 job_count=$((job_count - 1))
             fi
-        done
+        done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*.ts" -print0)
         
         # After the loop, wait for all remaining background jobs to finish
         wait
