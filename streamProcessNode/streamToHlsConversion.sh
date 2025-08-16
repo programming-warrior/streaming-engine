@@ -151,10 +151,7 @@ ffmpeg \
    [0:v:1]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v1]; \
    [v0][v1]hstack=inputs=2[vout]" \
 -map "[vout]" \
--c:v libx264 \
--preset ultrafast \
--tune zerolatency \
--crf 28 \
+-c:v copy \
 -g 60 \
 -keyint_min 60 \
 -sc_threshold 0 \
