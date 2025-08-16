@@ -56,47 +56,48 @@ echo "--------------------------------"
 mkdir -p "$OUTPUT_DIR"
 
 
-# --- Background S3 Upload Process (Corrected with better events and logging) ---
-echo "--- Starting S3 Upload Monitor ---"
+# --- Background S3 Upload Process (Resilient Polling Method) ---
+echo "--- Starting S3 Upload Monitor (Resilient Polling Method) ---"
 upload_to_s3() {
-    echo "Uploader started. Watching for 'close_write' and 'moved_to' events in $OUTPUT_DIR"
-    # CORRECTED: Added 'moved_to' to catch atomic renames of the .m3u8 file.
-    inotifywait -m -q -e close_write,moved_to --format '%w%f' "$OUTPUT_DIR" | while read -r FILE_PATH; do
-        echo "inotify event detected for: $FILE_PATH"
-
-        if [ ! -f "$FILE_PATH" ]; then
-            echo "File $FILE_PATH no longer exists. Skipping."
-            continue
-        fi
-
-        FILENAME=$(basename "$FILE_PATH")
-
-        if [[ "$FILENAME" == *.ts ]]; then
-            echo "Segment ready: $FILENAME. Uploading to S3..."
-            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
-                --region "$AWS_REGION" \
-                --cache-control "max-age=10" \
-                --content-type "video/mp2t"
-            
-            if [ $? -eq 0 ]; then
-                rm "$FILE_PATH"
-                echo "Successfully uploaded and removed $FILENAME"
-            else
-                echo "ERROR: Failed to upload $FILENAME"
-            fi
-        elif [[ "$FILENAME" == *.m3u8 ]]; then
-            echo "Playlist updated: $FILENAME. Uploading to S3..."
-            aws s3 cp "$FILE_PATH" "s3://$S3_BUCKET/$S3_PREFIX/$FILENAME" \
+    echo "[UPLOADER] Resilient uploader started. Polling every 2 seconds."
+    
+    # This continuous loop is self-healing. If an upload fails,
+    # it will be automatically retried on the next iteration.
+    while true; do
+        # STEP 1: Process the playlist file first to keep the stream manifest up to date.
+        # We check for its existence before trying to upload.
+        if [ -f "${OUTPUT_DIR}/master.m3u8" ]; then
+            aws s3 cp "${OUTPUT_DIR}/master.m3u8" "s3://$S3_BUCKET/$S3_PREFIX/master.m3u8" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=1" \
                 --content-type "application/vnd.apple.mpegurl"
-            
-            if [ $? -eq 0 ]; then
-                echo "Successfully uploaded playlist $FILENAME"
-            else
-                echo "ERROR: Failed to upload playlist $FILENAME"
-            fi
         fi
+
+        # STEP 2: Find all .ts segment files and attempt to upload them.
+        # The 'find ... -print0 | while ...' pattern is safe for all filenames.
+        find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*.ts" -print0 | while IFS= read -r -d '' ts_file; do
+            # Double-check the file still exists in case of a race condition.
+            if [ -f "$ts_file" ]; then
+                local filename
+                filename=$(basename "$ts_file")
+                echo "[UPLOADER] Found segment: $filename. Attempting upload..."
+                
+                # Attempt to upload. If successful (&&), then remove the local file.
+                if aws s3 cp "$ts_file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
+                    --region "$AWS_REGION" \
+                    --cache-control "max-age=10" \
+                    --content-type "video/mp2t"; then
+                    
+                    rm "$ts_file"
+                    echo "[UPLOADER] Successfully uploaded and removed $filename"
+                else
+                    echo "[UPLOADER] ERROR: Failed to upload $filename. Will retry on next cycle."
+                fi
+            fi
+        done
+
+        # STEP 3: Wait for a short interval before the next polling cycle.
+        sleep 2
     done
 }
 
