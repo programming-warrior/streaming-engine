@@ -56,16 +56,51 @@ echo "--------------------------------"
 mkdir -p "$OUTPUT_DIR"
 
 
-# --- Background S3 Upload Process (Resilient Polling Method) ---
-echo "--- Starting S3 Upload Monitor (Resilient Polling Method) ---"
+# --- Background S3 Upload Process (Corrected Resilient Polling Method) ---
+echo "--- Starting S3 Upload Monitor (Parallel, Resilient Polling) ---"
 upload_to_s3() {
-    echo "[UPLOADER] Resilient uploader started. Polling every 2 seconds."
+    # Set the maximum number of parallel uploads.
+    # A value between 4 and 10 is usually a good starting point.
+    local MAX_JOBS=8
+    echo "[UPLOADER] Resilient uploader started. Polling every 2 seconds with $MAX_JOBS parallel jobs."
     
-    # This continuous loop is self-healing. If an upload fails,
-    # it will be automatically retried on the next iteration.
     while true; do
-        # STEP 1: Process the playlist file first to keep the stream manifest up to date.
-        # We check for its existence before trying to upload.
+        # STEP 1: UPLOAD SEGMENTS FIRST (IN PARALLEL)
+        # We find all .ts files and process them.
+        local job_count=0
+        find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*.ts" -print0 | while IFS= read -r -d '' ts_file; do
+            # This entire block is run in a background subshell
+            (
+                if [ -f "$ts_file" ]; then
+                    local filename
+                    filename=$(basename "$ts_file")
+                    echo "[UPLOADER] Found segment: $filename. Starting parallel upload..."
+                    
+                    if aws s3 cp "$ts_file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
+                        --region "$AWS_REGION" \
+                        --cache-control "max-age=10" \
+                        --content-type "video/mp2t"; then
+                        
+                        rm "$ts_file"
+                        echo "[UPLOADER] SUCCESS: Parallel upload for $filename complete."
+                    else
+                        echo "[UPLOADER] ERROR: Parallel upload for $filename failed. Will retry."
+                    fi
+                fi
+            ) & # The '&' sends the subshell to the background
+
+            # Increment job counter and wait if we've hit the max
+            job_count=$((job_count + 1))
+            if [ "$job_count" -ge "$MAX_JOBS" ]; then
+                wait -n # Wait for any single background job to finish
+                job_count=$((job_count - 1))
+            fi
+        done
+        
+        # After the loop, wait for all remaining background jobs to finish
+        wait
+
+        # STEP 2: UPLOAD PLAYLIST SECOND (after all segments are done)
         if [ -f "${OUTPUT_DIR}/master.m3u8" ]; then
             aws s3 cp "${OUTPUT_DIR}/master.m3u8" "s3://$S3_BUCKET/$S3_PREFIX/master.m3u8" \
                 --region "$AWS_REGION" \
@@ -73,30 +108,7 @@ upload_to_s3() {
                 --content-type "application/vnd.apple.mpegurl"
         fi
 
-        # STEP 2: Find all .ts segment files and attempt to upload them.
-        # The 'find ... -print0 | while ...' pattern is safe for all filenames.
-        find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*.ts" -print0 | while IFS= read -r -d '' ts_file; do
-            # Double-check the file still exists in case of a race condition.
-            if [ -f "$ts_file" ]; then
-                local filename
-                filename=$(basename "$ts_file")
-                echo "[UPLOADER] Found segment: $filename. Attempting upload..."
-                
-                # Attempt to upload. If successful (&&), then remove the local file.
-                if aws s3 cp "$ts_file" "s3://$S3_BUCKET/$S3_PREFIX/$filename" \
-                    --region "$AWS_REGION" \
-                    --cache-control "max-age=10" \
-                    --content-type "video/mp2t"; then
-                    
-                    rm "$ts_file"
-                    echo "[UPLOADER] Successfully uploaded and removed $filename"
-                else
-                    echo "[UPLOADER] ERROR: Failed to upload $filename. Will retry on next cycle."
-                fi
-            fi
-        done
-
-        # STEP 3: Wait for a short interval before the next polling cycle.
+        # STEP 3: Wait before the next polling cycle.
         sleep 2
     done
 }
