@@ -99,8 +99,11 @@ upload_to_s3() {
         wait
 
         # STEP 2: UPLOAD PLAYLIST SECOND (after all segments are done)
-        if [ -f "${OUTPUT_DIR}/master.m3u8" ]; then
-            aws s3 cp "${OUTPUT_DIR}/master.m3u8" "s3://$S3_BUCKET/$S3_PREFIX/master.m3u8" \
+        local playlist_path="${OUTPUT_DIR}/master.m3u8"
+        if [ -f "$playlist_path" ]; then
+            # The '|| true' prevents the script from exiting if the upload fails
+            # due to the race condition.
+            aws s3 cp "$playlist_path" "s3://$S3_BUCKET/$S3_PREFIX/master.m3u8" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=1" \
                 --content-type "application/vnd.apple.mpegurl" || \
@@ -152,7 +155,10 @@ ffmpeg \
    [0:v:1]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v1]; \
    [v0][v1]hstack=inputs=2[vout]" \
 -map "[vout]" \
--c:v copy \
+-c:v libx264 \
+-preset ultrafast \
+-tune zerolatency \
+-crf 28 \
 -g 60 \
 -keyint_min 60 \
 -sc_threshold 0 \
