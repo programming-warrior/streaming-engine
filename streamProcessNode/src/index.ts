@@ -1,9 +1,7 @@
 import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { exec, spawn } from "child_process";
-import net from "net";
-import dgram from "dgram";
+import { exec } from "child_process";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -12,7 +10,7 @@ app.use(express.json());
 
 async function createSdpFile(
   streamInfo: any,
-  outputPath: string
+  sdpFilePath: string
 ) {
   // VP8-optimized SDP with better RTP parameters
   const sdpContent = `v=0
@@ -30,14 +28,14 @@ a=framerate:30
 a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 
   try {
-    const fullOutputPath = path.join(__dirname, outputPath);
+    const fullOutputPath = path.join(__dirname, sdpFilePath);
 
     if (!fs.existsSync(path.dirname(fullOutputPath))) {
       fs.mkdirSync(path.dirname(fullOutputPath), { recursive: true });
     }
 
     fs.writeFileSync(fullOutputPath, sdpContent);
-    console.log(`SDP file created at: ${outputPath}`);
+    console.log(`SDP file created at: ${sdpFilePath}`);
     return fullOutputPath;
   } catch (error) {
     console.error("Error creating SDP file:", error);
@@ -74,9 +72,8 @@ app.post("/api/start", async (req: Request, res: Response) => {
       `-e S3_BUCKET=${process.env.AWS_S3_BUCKET} ` +
       `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY} ` +
       `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_KEY} ` +
-      `-e PORT1=${streams[0].videoPort} ` +
-      `-e PORT2=${streams[1].videoPort} ` +
       `-e AWS_REGION=${process.env.AWS_REGION} ` +
+      `-e ROOM_ID=${roomId} ` +
       `-v "${fullSdpPath}":/app/stream.sdp ` +
       `-v "${outputPath}":/output ` +
       `--name streaming-container-${roomId} ` +
@@ -143,31 +140,31 @@ app.listen(PORT, () => {
 });
 
 // Optional: Add UDP socket monitoring for debugging
-function monitorUdpPort(port: number) {
-  const socket = dgram.createSocket("udp4");
+// function monitorUdpPort(port: number) {
+//   const socket = dgram.createSocket("udp4");
 
-  socket.on("message", (msg, rinfo) => {
-    console.log(
-      `[Port ${port}] RTP Packet from ${rinfo.address}:${rinfo.port}, size: ${msg.length}`
-    );
-  });
+//   socket.on("message", (msg, rinfo) => {
+//     console.log(
+//       `[Port ${port}] RTP Packet from ${rinfo.address}:${rinfo.port}, size: ${msg.length}`
+//     );
+//   });
 
-  socket.on("listening", () => {
-    const address = socket.address();
-    console.log(`UDP Monitor listening on ${address.address}:${address.port}`);
-  });
+//   socket.on("listening", () => {
+//     const address = socket.address();
+//     console.log(`UDP Monitor listening on ${address.address}:${address.port}`);
+//   });
 
-  socket.on("error", (err) => {
-    console.error(`UDP Monitor error on port ${port}:`, err);
-  });
+//   socket.on("error", (err) => {
+//     console.error(`UDP Monitor error on port ${port}:`, err);
+//   });
 
-  try {
-    socket.bind(port);
-  } catch (error) {
-    console.error(`Failed to bind UDP monitor to port ${port}:`, error);
-  }
+//   try {
+//     socket.bind(port);
+//   } catch (error) {
+//     console.error(`Failed to bind UDP monitor to port ${port}:`, error);
+//   }
 
-  return socket;
-}
+//   return socket;
+// }
 
 // Uncomment to enable UDP monitoring
