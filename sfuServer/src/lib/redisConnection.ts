@@ -100,7 +100,7 @@ export class RedisSingleton {
           users: [matchedUserId, userId], //offerer, answerer
           offerer: matchedUserId,
           answerer: userId,
-          streamUrl: `https://${process.env.BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/live-stream/${falseRoomId}/master.m3u8`,
+          streamUrl: `https://${process.env.BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/live-stream/${roomId}/master.m3u8`,
         };
 
         //store the streamRoom in redis
