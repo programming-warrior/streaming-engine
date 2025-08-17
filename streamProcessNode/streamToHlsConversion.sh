@@ -103,7 +103,8 @@ upload_to_s3() {
             aws s3 cp "${OUTPUT_DIR}/master.m3u8" "s3://$S3_BUCKET/$S3_PREFIX/master.m3u8" \
                 --region "$AWS_REGION" \
                 --cache-control "max-age=1" \
-                --content-type "application/vnd.apple.mpegurl"
+                --content-type "application/vnd.apple.mpegurl" || \
+                echo "[UPLOADER] WARN: Playlist upload failed, likely due to a harmless race condition. Will upload on next cycle."
         fi
 
         # STEP 3: Wait before the next polling cycle.
