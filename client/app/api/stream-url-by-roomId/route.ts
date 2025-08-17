@@ -5,7 +5,9 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const roomId = searchParams.get("roomId");
-    const roomString = await redis.get(`stream:${roomId}`);
+    console.log(roomId);
+    const roomString = await redis.get(`streamRoom:${roomId}`);
+    console.log(roomString);
     if (!roomString)
       return NextResponse.json({ error: "room not found" }, { status: 404 });
     const roomObject = JSON.parse(roomString as string);
