@@ -151,7 +151,6 @@ export async function sendStream(roomId: string) {
       roomId: roomId,
     });
   } catch (e: any) {
-    console.log("inside the catch of try");
     console.error("sendStreamError: " + e.message);
   }
 }
