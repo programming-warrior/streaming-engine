@@ -35,8 +35,8 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
       return;
     }
 
-    // if (peer.sendTransport) peer.sendTransport.close();
-    // if (peer.receiveTransport) peer.receiveTransport.close();
+    if (peer.sendTransport) peer.sendTransport.close();
+    if (peer.receiveTransport) peer.receiveTransport.close();
 
     const sendTransport = await router.createWebRtcTransport(
       config.mediasoup.webRtcTransportOptions
@@ -46,6 +46,8 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
     );
 
     sendTransport.on("dtlsstatechange", (dtlsState) => {
+      console.log("dtlsstatechange event called for sendTransport");
+      console.log(dtlsState);
       if (dtlsState === "closed") {
         console.log(`Transport closed for user`);
         sendTransport.close();
@@ -53,6 +55,8 @@ export async function handleCreateWebRtcTransport(socket: WebSocketWithUserId) {
     });
 
     receiveTransport.on("dtlsstatechange", (dtlsState) => {
+      console.log("dtlsstatechange event called for receiveTransport");
+      console.log(dtlsState);
       if (dtlsState === "closed") {
         console.log(`Transport closed for user`);
         receiveTransport.close();
@@ -102,8 +106,9 @@ export async function handleConnectWebRtcTransport(
 
   const peer = peers.get(socket.userId);
   if (!peer || !peer.sendTransport || !peer.receiveTransport) {
-    console.error("Transport not found");
-    send(socket, "error", { error: "Transport not found" });
+    console.error("Trying to connect to tranport but it is not created yet");
+    //close the connection for the user
+    socket.close();
     return;
   }
 
@@ -112,7 +117,8 @@ export async function handleConnectWebRtcTransport(
     peer.receiveTransport.id !== transportId
   ) {
     console.error("Transport ID mismatch");
-    send(socket, "error", { error: "Transport ID mismatch" });
+    //malicious user
+    socket.close();
     return;
   }
 
@@ -133,7 +139,7 @@ export async function handleConnectWebRtcTransport(
 export async function handleProduce(socket: WebSocketWithUserId, payload: any) {
   const { kind, rtpParameters } = payload;
 
-  if (!kind || !rtpParameters) {
+  if (!kind || !rtpParameters || !["audio", "video"].includes(kind)) {
     console.error("Invalid parameters for producing");
     send(socket, "error", { error: "Invalid parameters" });
     return;
@@ -151,33 +157,68 @@ export async function handleProduce(socket: WebSocketWithUserId, payload: any) {
     send(socket, "error", { error: "Transport not found" });
     return;
   }
+  console.log(`creating ${kind} producer`);
   const producer = await peer.sendTransport.produce({ kind, rtpParameters });
-  peer.producer = producer;
+  if (kind === "audio") {
+    peer.audioProducer = producer;
+  } else if (kind === "video") {
+    peer.videoProducer = producer;
+  }
 
-  producer.on("transportclose", () => {
+  producer.on("transportclose", async () => {
     console.log(`Producer's transport closed for user ${socket.userId}`);
-    peer.producer = null;
+    if (kind === "audio") {
+      delete peer.audioProducer;
+    } else if (kind === "video") {
+      delete peer.videoProducer;
+    }
+    if (peer.roomId) {
+      const otherUserId = await RedisSingleton.getParterUserId(
+        peer.roomId,
+        peer.id
+      );
+      if (otherUserId) {
+        const otherPeer = peers.get(otherUserId);
+        if (kind === "audio" && otherPeer?.audioConsumer) {
+          delete otherPeer.audioConsumer;
+        } else if (kind === "video" && otherPeer?.videoConsumer) {
+          delete otherPeer.videoConsumer;
+        }
+      }
+    }
   });
-
   //once the user has created the producer, we can add them to the room
   send(socket, "produceSuccess", { producerId: producer.id });
-  let roomId = await RedisSingleton.addUserToRoom(socket.userId).catch(
-    (error) => {
-      console.error(`Failed to add user ${socket.userId} to room:`, error);
+
+  //add the user to the room after both the producer has been created
+  if (peer.audioProducer && peer.videoProducer) {
+    let roomId = await RedisSingleton.addUserToRoom(socket.userId).catch(
+      (error) => {
+        console.error(`Failed to add user ${socket.userId} to room:`, error);
+      }
+    );
+    if (roomId) {
+      peer.roomId = roomId;
+      //start the ffmpeg docker container
+      sendStream(roomId);
     }
-  );
-  if(roomId){
-    sendStream(roomId)
   }
 }
 
-export async function handleConsume(
+async function handleConsume(
   socket: WebSocketWithUserId,
-  { rtpCapabilities, roomId }: any
+  { rtpCapabilities, roomId, kind }: any // Add kind parameter
 ) {
   if (!socket.userId) {
-    console.error("Socket userId is not set ");
+    console.error("Socket userId is not set");
     socket.close();
+    return;
+  }
+
+  // Validate kind parameter
+  if (!kind || !["audio", "video"].includes(kind)) {
+    console.error("Invalid or missing kind parameter");
+    send(socket, "error", { error: "Invalid kind parameter" });
     return;
   }
 
@@ -187,13 +228,14 @@ export async function handleConsume(
     send(socket, "error", { error: "Room not found" });
     return;
   }
+
   if (!room.users.includes(socket.userId)) {
     console.error(`User ${socket.userId} is not part of room ${roomId}`);
     send(socket, "error", { error: "User not part of room" });
     return;
   }
-  const producerPeerId = room.users.find((userId) => userId !== socket.userId);
 
+  const producerPeerId = room.users.find((userId) => userId !== socket.userId);
   if (!producerPeerId) {
     console.error(`Producer peer not found for user ${socket.userId}`);
     send(socket, "error", { error: "Producer peer not found" });
@@ -203,64 +245,123 @@ export async function handleConsume(
   const producerPeer = peers.get(producerPeerId);
   const consumerPeer = peers.get(socket.userId);
 
-  if (!producerPeer || !producerPeer.producer) {
+  if (!producerPeer) {
     console.error(`Producer peer not found for user ${producerPeerId}`);
     send(socket, "error", { error: "Producer peer not found" });
+    return;
+  }
+
+  // Check for specific producer type
+  const producer =
+    kind === "audio" ? producerPeer.audioProducer : producerPeer.videoProducer;
+  if (!producer) {
+    console.error(`${kind} producer not found for user ${producerPeerId}`);
+    send(socket, "error", { error: `${kind} producer not found` });
     return;
   }
 
   if (
     !consumerPeer ||
     !consumerPeer.receiveTransport ||
-    !consumerPeer.receiveTransport.id
+    consumerPeer.receiveTransport.closed
   ) {
-    console.error(`Consumer peer not found for user ${socket.userId}`);
-    send(socket, "error", { error: "Consumer peer not found" });
+    console.error(
+      `Consumer peer transport not available for user ${socket.userId}`
+    );
+    send(socket, "error", { error: "Consumer transport not available" });
     return;
   }
 
+  // Check if router can consume this producer
   if (
     !router ||
     !router.canConsume({
-      producerId: producerPeer.producer.id,
+      producerId: producer.id,
       rtpCapabilities,
     })
   ) {
-    console.error("Cannot consume", {
-      transportExists: !!consumerPeer.receiveTransport,
+    console.error(`Cannot consume ${kind} producer`, {
+      producerId: producer.id,
       rtpCapabilities,
     });
+    send(socket, "error", { error: `Cannot consume ${kind}` });
+    return;
+  }
+
+  // Check if consumer already exists
+  const existingConsumer =
+    kind === "audio" ? consumerPeer.audioConsumer : consumerPeer.videoConsumer;
+  if (existingConsumer) {
+    console.error(`${kind} consumer already exists for user ${socket.userId}`);
+    send(socket, "error", { error: `${kind} consumer already exists` });
     return;
   }
 
   try {
     const consumer = await consumerPeer.receiveTransport.consume({
-      producerId: producerPeer.producer.id,
+      producerId: producer.id,
       rtpCapabilities,
-      paused: true,
+      paused: true, // Start paused, client will resume when ready
     });
 
-    consumerPeer.consumer = consumer;
+    // Store consumer based on kind
+    if (kind === "audio") {
+      consumerPeer.audioConsumer = consumer;
+    } else {
+      consumerPeer.videoConsumer = consumer;
+    }
 
+    // Handle transport close
     consumer.on("transportclose", () => {
-      console.log(`Consumer's transport closed ${consumer.id}`);
-      // consumerPeer.consumers.delete(consumer.id);
+      console.log(`${kind} consumer's transport closed ${consumer.id}`);
+      if (kind === "audio") {
+        delete consumerPeer.audioConsumer;
+      } else {
+        delete consumerPeer.videoConsumer;
+      }
     });
 
+    // Handle producer close
     consumer.on("producerclose", () => {
-      console.log(`Producer for consumer closed ${consumer.id}`);
+      console.log(`Producer for ${kind} consumer closed ${consumer.id}`);
+      // Close and clean up the consumer
+      consumer.close();
+      if (kind === "audio") {
+        delete consumerPeer.audioConsumer;
+      } else {
+        delete consumerPeer.videoConsumer;
+      }
+
+      // Notify client that producer closed
+      send(socket, "producerClosed", { kind, consumerId: consumer.id });
     });
 
+    console.log("sending consumed message for kind: ", consumer.kind)
     send(socket, "consumed", {
       id: consumer.id,
-      producerId: producerPeer.producer.id,
+      producerId: producer.id,
       kind: consumer.kind,
       rtpParameters: consumer.rtpParameters,
     });
 
-    console.log(`Consumer ${consumer.id} created`);
+    console.log(
+      `${kind} consumer ${consumer.id} created for user ${socket.userId}`
+    );
   } catch (error) {
-    console.error("Failed to create consumer:", error);
+    console.error(`Failed to create ${kind} consumer:`, error);
+    send(socket, "error", { error: `Failed to create ${kind} consumer` });
+  }
+}
+
+// Alternative: Create both consumers at once
+export async function handleConsumeAll(
+  socket: WebSocketWithUserId,
+  { rtpCapabilities, roomId }: any
+) {
+  const kinds = ["audio", "video"] as const;
+
+  for (const kind of kinds) {
+    await handleConsume(socket, { rtpCapabilities, roomId, kind });
   }
 }
 
@@ -286,18 +387,20 @@ export async function handleConsumerResume(
   }
   const peer = peers.get(socket.userId);
 
-  if (!peer || !peer.consumer) {
+  if (!peer || !peer.audioConsumer || !peer.videoConsumer) {
     console.error(` peer not found for user ${socket.userId}`);
     send(socket, "error", { error: "peer not found" });
     return;
   }
 
   try {
-    await peer.consumer?.resume();
-
+    console.log('resuming audio consumer');
+    await peer.audioConsumer.resume();
+    console.log('resuming video consumer');
+    await peer.videoConsumer.resume();
     send(socket, "consumer-resumed", {});
-
-    console.log(`Consumer ${peer.consumer?.id} and resumed`);
+    console.log(`audio consumer ${peer.audioConsumer?.id} resumed`);
+    console.log(`video consumer ${peer.videoConsumer?.id} resumed`);
   } catch (error) {
     console.error("Failed to create consumer:", error);
   }

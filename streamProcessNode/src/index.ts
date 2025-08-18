@@ -8,24 +8,30 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-async function createSdpFile(
-  streamInfo: any,
-  sdpFilePath: string
-) {
-  // VP8-optimized SDP with better RTP parameters
-  const sdpContent = `v=0
+async function createSdpFile(streamInfo: any[], sdpFilePath: string) {
+  // Base SDP content
+  let sdpContent = `v=0
 o=- 0 0 IN IP4 ${process.env.BIND_IP}
 s=Mediasoup-Broadcast
 c=IN IP4 ${process.env.BIND_IP}
 t=0 0
-m=video ${streamInfo[0].videoPort} RTP/AVP ${streamInfo[0].videoPayloadType}
-a=rtpmap:${streamInfo[0].videoPayloadType} VP8/90000
-a=framerate:30
-a=fmtp:${streamInfo[0].videoPayloadType} max-fr=30;max-fs=8160
-m=video ${streamInfo[1].videoPort} RTP/AVP ${streamInfo[1].videoPayloadType}
-a=rtpmap:${streamInfo[1].videoPayloadType} VP8/90000
-a=framerate:30
-a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
+`;
+
+  // Dynamically add media descriptions for each stream
+  streamInfo.forEach((stream) => {
+    // Add Video part
+    if (stream.video) {
+      sdpContent += `m=video ${stream.video.port} RTP/AVP ${stream.video.payloadType}\n`;
+      sdpContent += `a=rtpmap:${stream.video.payloadType} VP8/90000\n`;
+      sdpContent += `a=framerate:30\n`;
+      sdpContent += `a=fmtp:${stream.video.payloadType} max-fr=30;max-fs=8160\n`;
+    }
+    // Add Audio part 🔊
+    if (stream.audio) {
+      sdpContent += `m=audio ${stream.audio.port} RTP/AVP ${stream.audio.payloadType}\n`;
+      sdpContent += `a=rtpmap:${stream.audio.payloadType} opus/48000/2\n`;
+    }
+  });
 
   try {
     const fullOutputPath = path.join(__dirname, sdpFilePath);
@@ -36,6 +42,9 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 
     fs.writeFileSync(fullOutputPath, sdpContent);
     console.log(`SDP file created at: ${sdpFilePath}`);
+    console.log("--- SDP Content ---");
+    console.log(sdpContent);
+    console.log("-------------------");
     return fullOutputPath;
   } catch (error) {
     console.error("Error creating SDP file:", error);
@@ -44,24 +53,28 @@ a=fmtp:${streamInfo[1].videoPayloadType} max-fr=30;max-fs=8160`;
 }
 
 app.post("/api/start", async (req: Request, res: Response) => {
-  const {  streams,  roomId } = req.body;
+  const { streams, roomId } = req.body;
 
   if (!streams || !roomId) {
     return res.status(400).json({ error: "Invalid parameters" });
   }
 
   try {
-
     console.log(" Creating SDP file...");
     const sdpFilePath = path.join("tmp", `stream-${roomId}.sdp`);
-    const fullSdpPath = await createSdpFile( streams, sdpFilePath);
-    const outputPath = path.join(__dirname,"output")
+    const fullSdpPath = await createSdpFile(streams, sdpFilePath);
+    const outputPath = path.join(__dirname, "output");
     const portMappings = streams
-      .map((stream: any) => `-p ${stream.videoPort}:${stream.videoPort}/udp`)
+      .flatMap((stream: any) => [
+        `-p ${stream.video.port}:${stream.video.port}/udp`,
+        `-p ${stream.audio.port}:${stream.audio.port}/udp`,
+      ])
       .join(" ");
 
+    console.log("Updated Port Mappings:", portMappings);
+
     console.log(portMappings);
-    console.log("outpath: ", outputPath)
+    console.log("outpath: ", outputPath);
 
     // monitorUdpPort(streams[0].videoPort);
     // monitorUdpPort(streams[1].videoPort);

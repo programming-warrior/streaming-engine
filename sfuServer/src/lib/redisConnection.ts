@@ -40,6 +40,20 @@ export class RedisSingleton {
     return RedisSingleton.instance;
   }
 
+   public static async getParterUserId(roomId: string, userId: string): Promise<
+    string
+   | null> {
+    const roomDataStr = await RedisSingleton.getInstance().get(
+      `streamRoom:${roomId}`
+    );
+    if (roomDataStr) {
+      const parsedRoomData= JSON.parse(roomDataStr);
+      const partnerUserId: string = parsedRoomData.users.find((id:string)=> id!==userId)
+      return partnerUserId;
+    }
+    return null;
+  }
+
   public static async getStreamRoom(roomId: string): Promise<{
     users: string[];
     offerer: string;
@@ -64,6 +78,7 @@ export class RedisSingleton {
     }
   }
 
+
   public static async addUserToRoom(userId: string): Promise<string | null> {
     try {
       console.log(`Adding user ${userId} to room`);
@@ -73,7 +88,8 @@ export class RedisSingleton {
         !peer.socket ||
         !peer.sendTransport ||
         !peer.receiveTransport
-        || !peer.producer
+        || !peer.audioProducer || 
+        !peer.videoProducer
       ) {
         peers.delete(userId);
         console.error(`Peer not found for user ${userId}`);
@@ -89,7 +105,8 @@ export class RedisSingleton {
           !matchedPeer.socket ||
           !matchedPeer.sendTransport ||
           !matchedPeer.receiveTransport ||
-          !matchedPeer.producer
+          !matchedPeer.videoProducer || 
+          !matchedPeer.audioProducer
         ) {
           console.error(` matched user with id: ${matchedUserId} not found`);
           return null;
@@ -113,13 +130,15 @@ export class RedisSingleton {
           roomId,
           matchedUserId: userId,
           matchedUserTransportId: peer.sendTransport.id,
-          producerId: peer.producer.id,
+          videoProducerId: peer.videoProducer.id,
+          audioProducerId: peer.audioProducer.id
         });
         send(peer.socket, "matched", {
           roomId,
           matchedUserId,
           matchedUserTransportId: matchedPeer.sendTransport.id,
-          producerId: matchedPeer.producer.id,
+          videoProducerId: matchedPeer.videoProducer.id,
+          audioProducerId: matchedPeer.audioProducer.id
         });
 
         return roomId;

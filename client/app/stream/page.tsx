@@ -5,6 +5,13 @@ import { Device } from "mediasoup-client";
 import { Transport } from "mediasoup-client/types";
 import { useRouter } from "next/navigation";
 import { RtpCapabilities } from "mediasoup-client/types";
+import {
+Mic,
+MicOff,
+Video,
+VideoOff
+} from "lucide-react";
+
 // import { Transport } from 'mediasoup-client/lib/Transport';
 
 export default function StreamPage() {
@@ -16,10 +23,32 @@ export default function StreamPage() {
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<Transport | null>(null);
   const receiveTransportRef = useRef<Transport | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const router = useRouter();
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [hasRemoteAudio, setHasRemoteAudio] = useState(false);
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const audioTrackRef = useRef<MediaStreamTrack | null>(null);
+  const videoProducerRef = useRef<any | null>(null);
+  const audioProducerRef = useRef<any | null>(null);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isMicOn, setIsMicOn] = useState(true);
 
   const ws_url = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4001";
 
+  const toggleCamera = () => {
+    if (videoTrackRef.current) {
+      videoTrackRef.current.enabled = !isCameraOn;
+      setIsCameraOn(!isCameraOn);
+    }
+  };
+
+  const toggleMic = () => {
+    if (audioTrackRef.current) {
+      audioTrackRef.current.enabled = !isMicOn;
+      setIsMicOn(!isMicOn);
+    }
+  };
   useEffect(() => {
     const ws = new WebSocket(ws_url);
     ws.onopen = () => {
@@ -81,28 +110,59 @@ export default function StreamPage() {
     }
 
     if (receiveTransportRef.current) {
-      receiveTransportRef.current
-        .consume({
+      try {
+        const consumer = await receiveTransportRef.current.consume({
           id,
           producerId,
           kind,
           rtpParameters,
-        })
-        .then((consumer) => {
-          console.log("Consumer created:", consumer);
-          if (!receiveVideoRef.current) {
-            console.error("Receive video element not found");
-            return;
-          }
-
-          receiveVideoRef.current.srcObject = new MediaStream([consumer.track]);
-          receiveVideoRef.current.play().catch((error) => {
-            console.error("Error playing video:", error);
-          });
-        })
-        .catch((error) => {
-          console.error("Error consuming:", error);
         });
+
+        console.log(`Consumer created for ${kind}:`, consumer);
+
+        if (!receiveVideoRef.current) {
+          console.error("Receive video element not found");
+          return;
+        }
+
+        if (!remoteStreamRef.current) {
+          console.log("instantiating remoteStreamRef");
+          remoteStreamRef.current = new MediaStream();
+        }
+        console.log(remoteStreamRef.current);
+        // Add the track to the remote stream
+        remoteStreamRef.current?.addTrack(consumer.track);
+
+        // Update state based on track kind
+        if (kind === "video") {
+          setHasRemoteVideo(true);
+        } else if (kind === "audio") {
+          setHasRemoteAudio(true);
+        }
+
+        // Set the stream as the source for the video element
+        receiveVideoRef.current.srcObject = remoteStreamRef.current;
+
+        // Play the video element
+        try {
+          if (kind === "video") {
+            await receiveVideoRef.current.play();
+            console.log(`Playing media with ${kind} track`);
+          }
+        } catch (playError: any) {
+          console.error("Error playing media:", playError);
+          // Handle autoplay policy restrictions
+          if (playError.name === "NotAllowedError") {
+            console.log("Autoplay prevented - user interaction required");
+          }
+        }
+
+        console.log(
+          `${kind} track added. Video: ${hasRemoteVideo}, Audio: ${hasRemoteAudio}`
+        );
+      } catch (error) {
+        console.error(`Error consuming ${kind}:`, error);
+      }
     }
   };
 
@@ -160,12 +220,10 @@ export default function StreamPage() {
       ...params.sendTransport,
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    const receiveTransport = device.createRecvTransport(
-     {
-      ... params.receiveTransport,
-      iceServers:  [{ urls: "stun:stun.l.google.com:19302" }]
-     }
-    );
+    const receiveTransport = device.createRecvTransport({
+      ...params.receiveTransport,
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
 
     sendTransportRef.current = sendTransport;
     receiveTransportRef.current = receiveTransport;
@@ -226,7 +284,12 @@ export default function StreamPage() {
     );
 
     sendTransport.on("produce", async (parameters, callback, errback) => {
+      console.log(parameters);
       try {
+        console.log(
+          "sending produce event to server for kind: ",
+          parameters.kind
+        );
         socket.send(
           JSON.stringify({
             event: "produce",
@@ -238,7 +301,8 @@ export default function StreamPage() {
         );
         socket.addEventListener("message", function onProduceSuccess(event) {
           const message = JSON.parse(event.data);
-          if (message.type === "produceSuccess") {
+          if (message.event === "produceSuccess") {
+            console.log("calling callback for kind: ", parameters.kind);
             callback({ id: message.producerId });
             socket.removeEventListener("message", onProduceSuccess);
           }
@@ -250,12 +314,23 @@ export default function StreamPage() {
 
     const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
+      audio: true,
     });
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
-    const track = stream.getVideoTracks()[0];
-    await sendTransport.produce({ track });
+    const videoTrack = stream.getVideoTracks()[0];
+    const audioTrack = stream.getAudioTracks()[0];
+
+    videoTrackRef.current = videoTrack;
+    audioTrackRef.current = audioTrack;
+
+    audioProducerRef.current = await sendTransport.produce({
+      track: audioTrack,
+    });
+    videoProducerRef.current = await sendTransport.produce({
+      track: videoTrack,
+    });
   };
 
   const startStreaming = async () => {
@@ -274,7 +349,7 @@ export default function StreamPage() {
     <div className="min-h-screen p-10">
       <div className="w-full flex items-center justify-center min-h-[500px]">
         <div className="flex items-center  w-full">
-          <video ref={videoRef} autoPlay muted className="w-1/2" />
+          <video ref={videoRef} autoPlay className="w-1/2" />
           <video
             ref={receiveVideoRef}
             autoPlay
@@ -285,22 +360,39 @@ export default function StreamPage() {
         </div>
       </div>
       <div className="mt-8 flex items-center justify-center">
-        {!isStreaming && (
-          <button
-            onClick={startStreaming}
-            className="bg-red-600 text-white  rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
-          >
-            Join
-          </button>
-        )}
-        {isStreaming && (
-          <button
-            onClick={stopStreaming}
-            className="bg-red-600 text-white rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
-          >
-            Leave
-          </button>
-        )}
+        
+        <div className="mt-8 flex items-center justify-center space-x-4">
+          {isStreaming && (
+            <>
+              <button
+                onClick={toggleCamera}
+                  className="bg-red-500 text-white rounded-full  p-2 cursor-pointer"
+              >
+                {isCameraOn ? <Video/> : <VideoOff/>}
+              </button>
+              <button
+                onClick={toggleMic}
+                className="bg-red-500 text-white rounded-full  p-2 cursor-pointer"
+              >
+                {isMicOn ? <Mic/> : <MicOff/>}
+              </button>
+              <button
+                onClick={stopStreaming}
+                className="bg-red-600 text-white rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
+              >
+                Leave
+              </button>
+            </>
+          )}
+          {!isStreaming && (
+            <button
+              onClick={startStreaming}
+              className="bg-red-600 text-white rounded-sm min-w-[100px] px-1 py-0.5 cursor-pointer"
+            >
+              Join
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

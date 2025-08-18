@@ -3,6 +3,9 @@ import { peers } from "./global";
 import axios from "axios";
 import { router } from "../mediaSoupManager";
 
+
+const CONTAINER_IP = process.env.FFMPEG_CONTAINER_IP;
+
 export async function sendStream(roomId: string) {
   try {
     // Listen for producers' stream events
@@ -14,10 +17,17 @@ export async function sendStream(roomId: string) {
     }
 
     const userIds = room.users;
-    const producer1 = peers.get(userIds[0])?.producer;
-    const producer2 = peers.get(userIds[1])?.producer;
+    const videoProducer1 = peers.get(userIds[0])?.videoProducer;
+    const audioProducer1 = peers.get(userIds[0])?.audioProducer;
+    const videoProducer2 = peers.get(userIds[1])?.videoProducer;
+    const audioProducer2 = peers.get(userIds[1])?.audioProducer;
 
-    if (!producer1 || !producer2) {
+    if (
+      !videoProducer1 ||
+      !videoProducer2 ||
+      !audioProducer1 ||
+      !audioProducer2
+    ) {
       console.error("Producers not found for the room");
       return;
     }
@@ -27,109 +37,68 @@ export async function sendStream(roomId: string) {
       return;
     }
 
-    const CONTAINER_IP = process.env.FFMPEG_CONTAINER_IP;
 
-    // Create a transport specifically for the first producer
-    const plainTransport1 = await router.createPlainTransport({
-      listenIp: process.env.LOCAL_BIND_IP || "127.0.0.1",
-      rtcpMux: false,
-      comedia: false,
-    });
+    // Base ports - will increment for each stream
+    let currentPort = 40750;
 
+    // Create transports and consumers for all producers
+    const user1Video = await createTransportAndConsumer(
+      videoProducer1,
+      currentPort
+    );
+    currentPort += 10; // Leave gap between ports
 
-    // const videoPort1 = plainTransport1.tuple.localPort; 
-    const videoPort1= 40752
+    const user1Audio = await createTransportAndConsumer(
+      audioProducer1,
+      currentPort
+    );
+    currentPort += 10;
 
-    await plainTransport1.connect({
-      ip: CONTAINER_IP, // FFmpeg container IP
-      port: videoPort1,
-      rtcpPort: videoPort1 + 1,
-    });
+    const user2Video = await createTransportAndConsumer(
+      videoProducer2,
+      currentPort
+    );
+    currentPort += 10;
 
-
-    const consumer1 = await plainTransport1.consume({
-      producerId: producer1.id,
-      rtpCapabilities: router.rtpCapabilities,
-      paused: false
-    });
-
-
-    const videoCodec1 =
-      consumer1.rtpParameters.codecs[0].mimeType.split("/")[1];
-    const videoPayloadType1 = consumer1.rtpParameters.codecs[0].payloadType;
-
-    const plainTransport2 = await router.createPlainTransport({
-      listenIp: process.env.LOCAL_BIND_IP || "127.0.0.1",
-      rtcpMux: false,
-      comedia: false,
-    });
-    // const videoPort2 = plainTransport2.tuple.localPort;
-    const videoPort2= 42409
-    console.log(
-      "Port1: " +
-        plainTransport1.tuple.localPort +
-        " Port2: " +
-        plainTransport2.tuple.localPort
+    const user2Audio = await createTransportAndConsumer(
+      audioProducer2,
+      currentPort
     );
 
-    await plainTransport2.connect({
-      ip: CONTAINER_IP, // FFmpeg container IP
-      port: videoPort2,
-      rtcpPort: videoPort2 + 1,
-    });
+    if(!user1Audio || !user2Audio || !user1Video || !user2Video){
+      throw new Error("error creating plain tranport");
+    }
+    console.log("Stream setup complete:");
+    console.log(
+      `User1 Video - Port: ${user1Video.port}, Codec: ${user1Video.codec}, PayloadType: ${user1Video.payloadType}`
+    );
+    console.log(
+      `User1 Audio - Port: ${user1Audio.port}, Codec: ${user1Audio.codec}, PayloadType: ${user1Audio.payloadType}`
+    );
+    console.log(
+      `User2 Video - Port: ${user2Video.port}, Codec: ${user2Video.codec}, PayloadType: ${user2Video.payloadType}`
+    );
+    console.log(
+      `User2 Audio - Port: ${user2Audio.port}, Codec: ${user2Audio.codec}, PayloadType: ${user2Audio.payloadType}`
+    );
 
-    const consumer2 = await plainTransport2.consume({
-      producerId: producer2.id,
-      rtpCapabilities: router.rtpCapabilities,
-      paused: false,
-    });
-
-    const videoCodec2 =
-      consumer2.rtpParameters.codecs[0].mimeType.split("/")[1];
-    const videoPayloadType2 = consumer2.rtpParameters.codecs[0].payloadType;
-
-    console.log("videoPayloadType1: "+ videoPayloadType1 + " videoPayloadType2: " + videoPayloadType2);
-  
-    plainTransport1.on("tuple", (tuple) => {
-      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
-    });
-    plainTransport2.on("tuple", (tuple) => {
-      console.log(`🔗 Transport1 Tuple Updated:`, tuple);
-    });
-
-    plainTransport1.on("trace", (trace) => {
-      // RTP/RTCP packet info
-      console.log("Trace:", trace);
-    });
-
-    plainTransport2.on("trace", (trace) => {
-      // RTP/RTCP packet info
-      console.log("Trace:", trace);
-    });
-
+    // Optional: Stats monitoring
     // const verificationInterval = setInterval(async () => {
     //   try {
-    //     const stats1 = await consumer1.getStats();
-    //     const stats2 = await consumer2.getStats();
-
-    //     console.log(stats1);
-    //     console.log(stats2);
-
+    //     const stats = await Promise.all([
+    //       user1Video.consumer.getStats(),
+    //       user1Audio.consumer.getStats(),
+    //       user2Video.consumer.getStats(),
+    //       user2Audio.consumer.getStats()
+    //     ]);
+    //     console.log("Consumer Stats:", stats);
     //   } catch (e) {
     //     console.error("Error getting consumer stats:", e);
     //     clearInterval(verificationInterval);
     //   }
     // }, 10000);
 
-    consumer1.on("trace", (trace) => {
-        console.log("Consumer1 RTP Packet Received:", trace);
-    });
-
-    consumer2.on("trace", (trace) => {
-        console.log("Consumer2 RTP Packet Received:", trace);
-    });
-
-    //send an api request to the worker node
+    // Send API request to worker node with all stream data
     const nodeIp = process.env.STREAMPROCESS_WORKER_NODE_IP;
     const sharedKey = process.env.SHARD_KEY;
 
@@ -138,19 +107,107 @@ export async function sendStream(roomId: string) {
     await axios.post("http://" + nodeIp + "/api/start", {
       streams: [
         {
-          videoPort: videoPort1,
-          videoCodec: videoCodec1,
-          videoPayloadType: videoPayloadType1,
+          userId: userIds[0],
+          video: {
+            port: user1Video.port,
+            codec: user1Video.codec,
+            payloadType: user1Video.payloadType,
+          },
+          audio: {
+            port: user1Audio.port,
+            codec: user1Audio.codec,
+            payloadType: user1Audio.payloadType,
+          },
         },
         {
-          videoPort: videoPort2,
-          videoCodec: videoCodec2,
-          videoPayloadType: videoPayloadType2,
+          userId: userIds[1],
+          video: {
+            port: user2Video.port,
+            codec: user2Video.codec,
+            payloadType: user2Video.payloadType,
+          },
+          audio: {
+            port: user2Audio.port,
+            codec: user2Audio.codec,
+            payloadType: user2Audio.payloadType,
+          },
         },
       ],
       roomId: roomId,
     });
+
+    // Store references for cleanup later
+    const streamData = {
+      roomId,
+      transports: [
+        user1Video.transport,
+        user1Audio.transport,
+        user2Video.transport,
+        user2Audio.transport,
+      ],
+      consumers: [
+        user1Video.consumer,
+        user1Audio.consumer,
+        user2Video.consumer,
+        user2Audio.consumer,
+      ],
+    };
+
+    // Store in a global map for cleanup when needed
+    // activeStreams.set(roomId, streamData);
+
+    console.log(`✅ Stream started successfully for room ${roomId}`);
+    return streamData;
   } catch (e: any) {
     console.error("sendStreamError: " + e.message);
   }
+}
+
+// Helper function to create transport and consumer
+async function createTransportAndConsumer(producer: any, basePort: number) {
+  
+  if(!router) return null;
+
+  const plainTransport = await router.createPlainTransport({
+    listenIp: process.env.LOCAL_BIND_IP || "127.0.0.1",
+    rtcpMux: false,
+    comedia: false,
+  });
+
+  await plainTransport.connect({
+    ip: CONTAINER_IP,
+    port: basePort,
+    rtcpPort: basePort + 1,
+  });
+
+  const consumer = await plainTransport.consume({
+    producerId: producer.id,
+    rtpCapabilities: router.rtpCapabilities,
+    paused: false,
+  });
+
+  const codec = consumer.rtpParameters.codecs[0].mimeType.split("/")[1];
+  const payloadType = consumer.rtpParameters.codecs[0].payloadType;
+
+  // Add event listeners
+  plainTransport.on("tuple", (tuple) => {
+    console.log(`🔗 Transport ${basePort} Tuple Updated:`, tuple);
+  });
+
+  plainTransport.on("trace", (trace) => {
+    console.log(`Transport ${basePort} Trace:`, trace);
+  });
+
+  consumer.on("trace", (trace) => {
+    console.log(`Consumer ${basePort} RTP Packet:`, trace);
+  });
+
+  return {
+    transport: plainTransport,
+    consumer,
+    port: basePort,
+    codec,
+    payloadType,
+    kind: producer.kind, // 'video' or 'audio'
+  };
 }

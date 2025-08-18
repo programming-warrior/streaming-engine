@@ -6,7 +6,7 @@ import {
   handleConnectWebRtcTransport,
   handleCreateWebRtcTransport,
   handleProduce,
-  handleConsume,
+  handleConsumeAll,
   handleConsumerResume,
 } from "./signallingHandlers";
 import { WebSocketMessageType } from "./types";
@@ -26,22 +26,28 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
     socket,
     sendTransport: null,
     receiveTransport: null,
-    producer: null,
+    id: userId
   });
 
   send(socket, "welcome", { userId });
 
   socket.on("close", async () => {
-    const peer= peers.get(userId);
+    const peer = peers.get(userId);
+    console.log(`Socket connection closed for user: ${userId}`);
     if (peer?.sendTransport && !peer.sendTransport.closed) {
-       peer.sendTransport.close();
+      console.log("closing sendTransport for user: ", userId);
+      peer.sendTransport.close();
     }
-    if(peer?.receiveTransport && !peer.receiveTransport.closed){
-       peer.receiveTransport.close();
+    if (peer?.receiveTransport && !peer.receiveTransport.closed) {
+      console.log("closing receiveTransport for user: ", userId);
+      peer.receiveTransport.close();
     }
     peers.delete(userId);
-    console.log(`Socket connection closed for user: ${userId}`);
-    RedisSingleton.removeUserFromtheQueeu(userId).catch((e) => {});
+    RedisSingleton.removeUserFromtheQueeu(userId)
+      .then(() =>
+        console.log("removed from the waiting queue, userId: ", userId)
+      )
+      .catch((e) => {});
   });
 
   socket.on("message", async (message: WebSocketMessageType) => {
@@ -68,11 +74,11 @@ export const handleSocketConnection = async (socket: WebSocketWithUserId) => {
         break;
 
       case "consume":
-        await handleConsume(socket, payload);
+        await handleConsumeAll(socket, payload);
         break;
-      
-      case "resume": 
-        await handleConsumerResume(socket,payload)
+
+      case "resume":
+        await handleConsumerResume(socket, payload);
         break;
       default:
         console.warn(`Unknown action: ${event}`);
