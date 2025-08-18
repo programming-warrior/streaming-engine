@@ -59,7 +59,7 @@ mkdir -p "$OUTPUT_DIR"
 # --- Background S3 Upload Process (Corrected Parallel and Resilient) ---
 echo "--- Starting S3 Upload Monitor (Parallel, Resilient Polling) ---"
 upload_to_s3() {
-    local MAX_JOBS=8
+    local MAX_JOBS=20
     echo "[UPLOADER] Resilient uploader started. Polling every 2 seconds with $MAX_JOBS parallel jobs."
     
     while true; do
@@ -138,7 +138,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# --- Main FFMPEG Command (No changes needed here) ---
+# --- Main FFMPEG Command (Updated for Audio) ---
 echo "--- Starting FFMPEG for Real-time HLS ---"
 ffmpeg \
 -loglevel info \
@@ -153,12 +153,16 @@ ffmpeg \
 -filter_complex \
   "[0:v:0]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v0]; \
    [0:v:1]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30[v1]; \
-   [v0][v1]hstack=inputs=2[vout]" \
+   [v0][v1]hstack=inputs=2[vout]; \
+   [0:a:0][0:a:1]amix=inputs=2[aout]" \
 -map "[vout]" \
+-map "[aout]" \
 -c:v libx264 \
 -preset ultrafast \
 -tune zerolatency \
 -crf 28 \
+-c:a aac \
+-b:a 128k \
 -g 60 \
 -keyint_min 60 \
 -sc_threshold 0 \
